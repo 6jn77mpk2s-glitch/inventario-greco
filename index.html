@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Inventario — Climas Greco</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0f1117;--surface:#171c28;--card:#1e2436;--border:#2a3148;
+  --accent:#3b82f6;--accent2:#60a5fa;
+  --red:#ef4444;--red-bg:#1f1115;
+  --orange:#f97316;--orange-bg:#1f160d;
+  --green:#22c55e;--green-bg:#0d1f14;
+  --yellow:#eab308;--yellow-bg:#1a1a0a;
+  --text:#e2e8f0;--muted:#64748b;
+  --mono:'DM Mono',monospace;--sans:'Sora',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;padding-bottom:100px;}
+
+/* PIN */
+.pin-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:24px;padding:32px;}
+.pin-logo{font-size:24px;font-weight:700;}.pin-logo span{color:var(--accent2);}
+.pin-sub{font-size:13px;color:var(--muted);text-align:center;}
+.pin-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:280px;}
+.pin-input{font-family:var(--mono);font-size:32px;letter-spacing:12px;background:var(--card);border:2px solid var(--border);color:var(--text);padding:14px 20px;border-radius:12px;width:100%;text-align:center;outline:none;-webkit-text-security:disc;}
+.pin-input:focus{border-color:var(--accent);}
+.pin-input.error{border-color:var(--red);animation:shake .3s;}
+.pin-btn{font-family:var(--sans);font-size:15px;font-weight:700;background:var(--accent);color:white;border:none;border-radius:10px;padding:14px;width:100%;cursor:pointer;}
+.pin-err{color:var(--red);font-size:12px;}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+
+/* BRANCH SELECTOR */
+.branch-screen{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:998;gap:28px;padding:32px;}
+.branch-screen.show{display:flex;}
+.branch-title{font-size:20px;font-weight:700;text-align:center;}
+.branch-sub{font-size:13px;color:var(--muted);}
+.branch-cards{display:flex;flex-direction:column;gap:12px;width:100%;max-width:320px;}
+.branch-card{background:var(--card);border:2px solid var(--border);border-radius:14px;padding:18px 20px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:all .15s;}
+.branch-card:active{transform:scale(0.97);}
+.branch-card.sur{border-color:rgba(59,130,246,0.4);}
+.branch-card.centro{border-color:rgba(34,197,94,0.4);}
+.branch-card.soriana{border-color:rgba(234,179,8,0.4);}
+.branch-card:hover.sur{background:rgba(59,130,246,0.08);}
+.branch-card:hover.centro{background:rgba(34,197,94,0.08);}
+.branch-card:hover.soriana{background:rgba(234,179,8,0.08);}
+.branch-name{font-size:17px;font-weight:700;}
+.branch-card.sur .branch-name{color:var(--accent2);}
+.branch-card.centro .branch-name{color:var(--green);}
+.branch-card.soriana .branch-name{color:var(--yellow);}
+.branch-arrow{color:var(--muted);font-size:20px;}
+
+/* HEADER */
+header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 16px 12px;position:sticky;top:0;z-index:100;border-bottom:1px solid #1e3a5c;box-shadow:0 4px 24px rgba(0,0,0,0.4);}
+.header-top{display:flex;justify-content:space-between;align-items:center;}
+.logo{font-size:16px;font-weight:700;}.logo span{color:var(--accent2);}
+.branch-pill{font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:20px;letter-spacing:1px;cursor:pointer;font-weight:700;}
+.branch-pill.sur{background:rgba(59,130,246,0.2);color:var(--accent2);border:1px solid rgba(59,130,246,0.4);}
+.branch-pill.centro{background:rgba(34,197,94,0.2);color:var(--green);border:1px solid rgba(34,197,94,0.4);}
+.branch-pill.soriana{background:rgba(234,179,8,0.2);color:var(--yellow);border:1px solid rgba(234,179,8,0.4);}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block;margin-left:5px;vertical-align:middle;transition:background .3s;}
+.sync-dot.ok{background:var(--green);}.sync-dot.syncing{background:var(--yellow);}.sync-dot.error{background:var(--red);}
+.stats-bar{display:flex;gap:14px;margin-top:10px;}
+.stat{display:flex;flex-direction:column;gap:1px;}
+.stat-val{font-family:var(--mono);font-size:20px;font-weight:500;color:var(--accent2);line-height:1;}
+.stat-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;}
+.stat-div{width:1px;background:var(--border);align-self:stretch;}
+
+/* TABS */
+.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);}
+.tab{flex:1;padding:12px;text-align:center;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:.5px;transition:all .15s;}
+.tab.active{color:var(--accent2);border-bottom-color:var(--accent);}
+
+/* CONTROLS */
+.controls{padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--surface);}
+.btn{font-family:var(--sans);font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s;}
+.btn-primary{background:var(--accent);color:white;}
+.btn-primary:active{background:#2563eb;transform:scale(.97);}
+.btn-ghost{background:var(--card);color:var(--text);border:1px solid var(--border);}
+.btn-ghost:active{background:var(--border);transform:scale(.97);}
+.btn-danger{background:transparent;color:var(--red);border:1px solid rgba(239,68,68,.3);}
+
+/* FILTER */
+.filter-bar{padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.filter-bar::-webkit-scrollbar{display:none;}
+.filter-chip{font-family:var(--mono);font-size:10px;padding:4px 9px;border-radius:20px;border:1px solid var(--border);background:var(--card);color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .15s;}
+.filter-chip.active{background:var(--accent);color:white;border-color:var(--accent);}
+
+/* LIST */
+.list{padding:10px 14px;display:flex;flex-direction:column;gap:7px;}
+.marca-group{display:flex;flex-direction:column;gap:5px;}
+.marca-header{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:4px 0 2px;border-bottom:1px solid var(--border);margin-bottom:2px;}
+.marca-header.COLDEN{color:var(--yellow);border-color:rgba(234,179,8,.3);}
+.marca-header.DUVENTUS{color:var(--green);border-color:rgba(34,197,94,.3);}
+.marca-header.MIRAGE{color:var(--accent2);border-color:rgba(96,165,250,.3);}
+.marca-header.MATERIAL{color:var(--orange);border-color:rgba(249,115,22,.3);}
+
+/* ITEM */
+.item{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .15s;}
+.item.zero{background:var(--red-bg);border-color:rgba(239,68,68,.25);}
+.item.special{background:var(--orange-bg);border-color:rgba(249,115,22,.25);}
+.item.editing{border-color:var(--accent);}
+.item-main{display:flex;align-items:center;padding:9px 12px;gap:10px;cursor:pointer;}
+.item-info{flex:1;min-width:0;}
+.item-model{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.item.zero .item-model{color:var(--red);}
+.item.special .item-model{color:var(--orange);}
+.item-meta{display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;}
+.tag{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border);}
+.item.zero .tag{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.2);color:var(--red);}
+.item.special .tag{background:rgba(249,115,22,.1);border-color:rgba(249,115,22,.2);color:var(--orange);}
+.item-qty{font-family:var(--mono);font-size:26px;font-weight:500;min-width:44px;text-align:center;line-height:1;}
+.item.zero .item-qty{color:var(--red);}
+.item.special .item-qty{color:var(--orange);}
+.item-note{font-size:10px;color:var(--orange);padding:0 12px 7px;font-style:italic;}
+
+/* EDITOR */
+.editor{display:none;padding:11px;border-top:1px solid var(--border);background:rgba(0,0,0,.2);gap:9px;flex-direction:column;}
+.editor.open{display:flex;}
+.field-row{display:flex;gap:8px;flex-wrap:wrap;}
+.field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:100px;}
+.field label{font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;}
+.field input,.field select{font-family:var(--mono);font-size:13px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 9px;border-radius:7px;width:100%;outline:none;transition:border-color .15s;-webkit-appearance:none;}
+.field input:focus,.field select:focus{border-color:var(--accent);}
+.qty-row{display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:7px;overflow:hidden;}
+.qty-btn{background:none;border:none;color:var(--text);font-size:22px;width:42px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s;font-family:var(--mono);}
+.qty-btn:active{background:var(--border);}
+.qty-input{flex:1;text-align:center;font-family:var(--mono);font-size:18px;background:none;border:none;color:var(--text);outline:none;padding:0;-moz-appearance:textfield;}
+.qty-input::-webkit-inner-spin-button{display:none;}
+.editor-actions{display:flex;gap:8px;}
+
+/* MODAL */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:flex-end;backdrop-filter:blur(4px);}
+.modal.open{display:flex;}
+.modal-sheet{background:var(--surface);border-radius:20px 20px 0 0;padding:20px 16px 32px;width:100%;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:12px;max-height:90vh;overflow-y:auto;}
+.modal-title{font-size:16px;font-weight:700;}
+
+/* LOADING */
+.loading{text-align:center;padding:50px 20px;color:var(--muted);}
+.spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* TOAST */
+.toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--green);color:#0a1a0f;font-weight:700;font-size:13px;padding:9px 18px;border-radius:30px;opacity:0;transition:all .3s;z-index:300;white-space:nowrap;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast.err{background:var(--red);color:white;}
+
+/* EMPTY */
+.empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:13px;}
+</style>
+</head>
+<body>
+
+<!-- PIN -->
+<div class="pin-screen" id="pinScreen">
+  <div class="pin-logo">Climas <span>Greco</span></div>
+  <div class="pin-sub">Ingresa el código de acceso</div>
+  <div class="pin-wrap">
+    <input class="pin-input" type="password" id="pinInput" maxlength="6" inputmode="numeric" placeholder="••••" onkeydown="if(event.key==='Enter')checkPin()">
+    <button class="pin-btn" onclick="checkPin()">Entrar</button>
+    <span class="pin-err" id="pinErr"></span>
+  </div>
+</div>
+
+<!-- BRANCH SELECTOR -->
+<div class="branch-screen" id="branchScreen">
+  <div class="pin-logo">Climas <span>Greco</span></div>
+  <div class="branch-title">¿Qué sucursal?</div>
+  <div class="branch-cards">
+    <div class="branch-card sur" onclick="selectBranch('sur')">
+      <div>
+        <div class="branch-name">SUR</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Sucursal Sur</div>
+      </div>
+      <div class="branch-arrow">›</div>
+    </div>
+    <div class="branch-card centro" onclick="selectBranch('centro')">
+      <div>
+        <div class="branch-name">CENTRO</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Sucursal Centro</div>
+      </div>
+      <div class="branch-arrow">›</div>
+    </div>
+    <div class="branch-card soriana" onclick="selectBranch('soriana')">
+      <div>
+        <div class="branch-name">SORIANA</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Sucursal Soriana / Norte</div>
+      </div>
+      <div class="branch-arrow">›</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <header>
+    <div class="header-top">
+      <div class="logo">Climas <span>Greco</span></div>
+      <div class="branch-pill" id="branchPill" onclick="goBack()">— ↩</div>
+    </div>
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-val" id="statUnits">—</div><div class="stat-lbl">Aires</div></div>
+      <div class="stat-div"></div>
+      <div class="stat"><div class="stat-val" id="statMat">—</div><div class="stat-lbl">Materiales</div></div>
+      <div class="stat-div"></div>
+      <div class="stat"><div class="stat-val" id="statZero">—</div><div class="stat-lbl">En cero</div></div>
+      <div style="margin-left:auto;align-self:center"><span class="sync-dot" id="syncDot"></span></div>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" id="tabAires" onclick="switchTab('aires')">🌬 AIRES</div>
+    <div class="tab" id="tabMat" onclick="switchTab('materiales')">📦 MATERIALES</div>
+  </div>
+
+  <!-- AIRES SECTION -->
+  <div id="secAires">
+    <div class="controls">
+      <button class="btn btn-primary" onclick="openModal('aires')">+ Agregar aire</button>
+      <button class="btn btn-ghost" onclick="toggleFilter()">🔍 Filtrar</button>
+      <button class="btn btn-ghost" onclick="loadAll()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="filter-bar" id="filterBar" style="display:none">
+      <div class="filter-chip active" onclick="setFilter('ALL',this)">TODOS</div>
+      <div class="filter-chip" onclick="setFilter('MIRAGE',this)">MIRAGE</div>
+      <div class="filter-chip" onclick="setFilter('DUVENTUS',this)">DUVENTUS</div>
+      <div class="filter-chip" onclick="setFilter('COLDEN',this)">COLDEN</div>
+      <div class="filter-chip" onclick="setFilter('ZERO',this)">EN CERO</div>
+      <div class="filter-chip" onclick="setFilter('110v',this)">110V</div>
+      <div class="filter-chip" onclick="setFilter('220v',this)">220V</div>
+    </div>
+    <div class="list" id="listAires"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+
+  <!-- MATERIALES SECTION -->
+  <div id="secMat" style="display:none">
+    <div class="controls">
+      <button class="btn btn-primary" onclick="openModal('mat')">+ Agregar material</button>
+      <button class="btn btn-ghost" onclick="loadAll()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="list" id="listMat"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+</div>
+
+<!-- MODAL AGREGAR AIRE -->
+<div class="modal" id="modalAires" onclick="closeModalBg(event,'modalAires')">
+  <div class="modal-sheet">
+    <div class="modal-title">➕ Agregar aire</div>
+    <div class="field-row">
+      <div class="field"><label>Marca</label>
+        <select id="nMarca"><option>MIRAGE</option><option>DUVENTUS</option><option>COLDEN</option><option>OTRA</option></select>
+      </div>
+      <div class="field"><label>Modelo</label><input type="text" id="nModelo" placeholder="ej. X32"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Voltaje</label>
+        <select id="nVoltaje"><option>110v</option><option>220v</option></select>
+      </div>
+      <div class="field"><label>Tonelaje</label>
+        <select id="nTon"><option>1 ton</option><option>1.5 ton</option><option>2 ton</option><option>3 ton</option></select>
+      </div>
+    </div>
+    <div class="field"><label>Cantidad</label>
+      <div class="qty-row">
+        <button class="qty-btn" onclick="adj('nQtyA',-1)">−</button>
+        <input class="qty-input" type="number" id="nQtyA" value="0" min="0">
+        <button class="qty-btn" onclick="adj('nQtyA',1)">+</button>
+      </div>
+    </div>
+    <div class="field"><label>Nota (opcional)</label><input type="text" id="nNotaA" placeholder="ej. En reparación"></div>
+    <div class="editor-actions">
+      <button class="btn btn-primary" style="flex:1" onclick="addAire()">Guardar</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalAires')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AGREGAR MATERIAL -->
+<div class="modal" id="modalMat" onclick="closeModalBg(event,'modalMat')">
+  <div class="modal-sheet">
+    <div class="modal-title">➕ Agregar material</div>
+    <div class="field"><label>Nombre</label><input type="text" id="nNombre" placeholder="ej. Rollo cable 12, Breaker 30A, Base para minisplit"></div>
+    <div class="field"><label>Cantidad</label>
+      <div class="qty-row">
+        <button class="qty-btn" onclick="adj('nQtyM',-1)">−</button>
+        <input class="qty-input" type="number" id="nQtyM" value="0" min="0">
+        <button class="qty-btn" onclick="adj('nQtyM',1)">+</button>
+      </div>
+    </div>
+    <div class="field"><label>Nota (opcional)</label><input type="text" id="nNotaM" placeholder="opcional"></div>
+    <div class="editor-actions">
+      <button class="btn btn-primary" style="flex:1" onclick="addMat()">Guardar</button>
+      <button class="btn btn-ghost" onclick="closeModal('modalMat')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const URL_SB  = 'https://mvenmzrfkmyfftwswxtq.supabase.co';
+const KEY_SB  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZW5tenJma215ZmZ0d3N3eHRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTYxMTUsImV4cCI6MjA5MjUzMjExNX0.Rged1qWORiY2l7wLL9rM-aRvEnwJa58BVBdYvLI4qyw';
+const PIN     = '18';
+
+let branch = null;
+let aires  = [];
+let mats   = [];
+let activeFilter = 'ALL';
+let filterVisible = false;
+let activeTab = 'aires';
+
+const SUR_DEFAULT = [
+  {marca:"COLDEN",  modelo:"Colden",       voltaje:"220v",ton:"1 ton",  qty:24,nota:""},
+  {marca:"DUVENTUS",modelo:"Advances",     voltaje:"110v",ton:"1 ton",  qty:2, nota:""},
+  {marca:"DUVENTUS",modelo:"Advances",     voltaje:"220v",ton:"1 ton",  qty:8, nota:""},
+  {marca:"DUVENTUS",modelo:"Advances",     voltaje:"220v",ton:"1.5 ton",qty:1, nota:""},
+  {marca:"DUVENTUS",modelo:"Advances",     voltaje:"220v",ton:"2 ton",  qty:3, nota:""},
+  {marca:"DUVENTUS",modelo:"Classic",      voltaje:"110v",ton:"1 ton",  qty:16,nota:""},
+  {marca:"DUVENTUS",modelo:"Classic",      voltaje:"220v",ton:"1.5 ton",qty:1, nota:""},
+  {marca:"DUVENTUS",modelo:"Nova Inverter",voltaje:"220v",ton:"3 ton",  qty:1, nota:""},
+  {marca:"MIRAGE",  modelo:"Flex",         voltaje:"220v",ton:"1 ton",  qty:9, nota:""},
+  {marca:"MIRAGE",  modelo:"Life 12",      voltaje:"220v",ton:"1 ton",  qty:2, nota:""},
+  {marca:"MIRAGE",  modelo:"Magnum",       voltaje:"110v",ton:"1 ton",  qty:2, nota:""},
+  {marca:"MIRAGE",  modelo:"Magnum",       voltaje:"220v",ton:"1 ton",  qty:0, nota:"CERO"},
+  {marca:"MIRAGE",  modelo:"Magnum",       voltaje:"220v",ton:"1.5 ton",qty:0, nota:"CERO"},
+  {marca:"MIRAGE",  modelo:"Neo Inverter", voltaje:"110v",ton:"1 ton",  qty:1, nota:""},
+  {marca:"MIRAGE",  modelo:"Nex",          voltaje:"110v",ton:"1 ton",  qty:2, nota:""},
+  {marca:"MIRAGE",  modelo:"V32",          voltaje:"110v",ton:"1 ton",  qty:1, nota:""},
+  {marca:"MIRAGE",  modelo:"V32",          voltaje:"220v",ton:"2 ton",  qty:1, nota:""},
+  {marca:"MIRAGE",  modelo:"X",            voltaje:"110v",ton:"1 ton",  qty:0, nota:"CERO"},
+  {marca:"MIRAGE",  modelo:"X",            voltaje:"220v",ton:"2 ton",  qty:4, nota:"5 en total, 1 en reparación (contra tuerca)"},
+  {marca:"MIRAGE",  modelo:"X reparación", voltaje:"220v",ton:"2 ton",  qty:1, nota:"En reparación — contra tuerca"},
+  {marca:"MIRAGE",  modelo:"X32",          voltaje:"110v",ton:"1 ton",  qty:0, nota:"½ unidad — solo condensador"},
+  {marca:"MIRAGE",  modelo:"X32",          voltaje:"220v",ton:"1 ton",  qty:0, nota:"½ unidad — solo evaporador"},
+  {marca:"MIRAGE",  modelo:"X32",          voltaje:"220v",ton:"1.5 ton",qty:0, nota:"CERO"},
+  {marca:"MIRAGE",  modelo:"X32",          voltaje:"220v",ton:"2 ton",  qty:0, nota:"CERO"},
+  {marca:"MIRAGE",  modelo:"XLife",        voltaje:"220v",ton:"1 ton",  qty:7, nota:""},
+];
+
+// ── API ──
+const hdrs = () => ({'apikey':KEY_SB,'Authorization':'Bearer '+KEY_SB,'Content-Type':'application/json','Prefer':'return=representation'});
+function setSyncDot(s){const d=document.getElementById('syncDot');if(d)d.className='sync-dot '+s;}
+
+async function api(path,opts={}){
+  setSyncDot('syncing');
+  try{
+    const r=await fetch(URL_SB+'/rest/v1/'+path,{headers:hdrs(),...opts});
+    if(!r.ok)throw new Error(await r.text());
+    const j=r.status===204?[]:await r.json();
+    setSyncDot('ok');return j;
+  }catch(e){setSyncDot('error');throw e;}
+}
+
+// ── PIN ──
+function checkPin(){
+  const v=document.getElementById('pinInput').value;
+  if(v===PIN){
+    document.getElementById('pinScreen').style.display='none';
+    document.getElementById('branchScreen').classList.add('show');
+  }else{
+    const i=document.getElementById('pinInput');
+    i.classList.add('error');
+    document.getElementById('pinErr').textContent='Código incorrecto';
+    setTimeout(()=>{i.classList.remove('error');i.value='';document.getElementById('pinErr').textContent='';},1200);
+  }
+}
+
+// ── BRANCH ──
+function selectBranch(b){
+  branch=b;
+  document.getElementById('branchScreen').classList.remove('show');
+  document.getElementById('app').style.display='block';
+  const pill=document.getElementById('branchPill');
+  pill.textContent=b.toUpperCase()+' ↩';
+  pill.className='branch-pill '+b;
+  loadAll();
+}
+
+function goBack(){
+  document.getElementById('app').style.display='none';
+  document.getElementById('branchScreen').classList.add('show');
+  aires=[];mats=[];
+}
+
+// ── LOAD ──
+async function loadAll(){
+  try{
+    // Load aires
+    let rows=await api(`inventario?select=*&sucursal=eq.${branch}&order=marca.asc,modelo.asc,voltaje.asc`);
+    if(rows.length===0 && branch==='sur'){
+      const seeded=SUR_DEFAULT.map(r=>({...r,sucursal:'sur'}));
+      await api('inventario',{method:'POST',body:JSON.stringify(seeded)});
+      rows=await api(`inventario?select=*&sucursal=eq.${branch}&order=marca.asc,modelo.asc,voltaje.asc`);
+    }
+    aires=rows;
+    // Load materiales
+    mats=await api(`materiales?select=*&sucursal=eq.${branch}&order=nombre.asc`);
+    renderAires();
+    renderMats();
+    updateStats();
+  }catch(e){
+    document.getElementById('listAires').innerHTML=`<div class="loading" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+// ── STATS ──
+function updateStats(){
+  document.getElementById('statUnits').textContent=aires.filter(r=>r.modelo!=='X reparación').reduce((s,r)=>s+r.qty,0);
+  document.getElementById('statMat').textContent=mats.reduce((s,r)=>s+r.qty,0);
+  document.getElementById('statZero').textContent=[...aires,...mats].filter(r=>r.qty===0).length;
+}
+
+// ── TABS ──
+function switchTab(t){
+  activeTab=t;
+  document.getElementById('secAires').style.display=t==='aires'?'block':'none';
+  document.getElementById('secMat').style.display=t==='materiales'?'block':'none';
+  document.getElementById('tabAires').className='tab'+(t==='aires'?' active':'');
+  document.getElementById('tabMat').className='tab'+(t==='materiales'?' active':'');
+}
+
+// ── FILTER ──
+function toggleFilter(){filterVisible=!filterVisible;document.getElementById('filterBar').style.display=filterVisible?'flex':'none';}
+function setFilter(f,el){activeFilter=f;document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');renderAires();}
+function matches(item){
+  if(activeFilter==='ALL')return true;
+  if(activeFilter==='ZERO')return item.qty===0;
+  if(activeFilter==='110v')return item.voltaje==='110v';
+  if(activeFilter==='220v')return item.voltaje==='220v';
+  return item.marca===activeFilter;
+}
+
+// ── RENDER AIRES ──
+function renderAires(){
+  const list=document.getElementById('listAires');
+  const filtered=aires.filter(matches);
+  if(!filtered.length){list.innerHTML='<div class="empty">Sin resultados</div>';return;}
+  const mo={COLDEN:0,DUVENTUS:1,MIRAGE:2};
+  const groups={};
+  filtered.forEach(item=>{if(!groups[item.marca])groups[item.marca]=[];groups[item.marca].push(item);});
+  const marcas=Object.keys(groups).sort((a,b)=>(mo[a]??3)-(mo[b]??3));
+  let html='';
+  marcas.forEach(marca=>{
+    html+=`<div class="marca-group"><div class="marca-header ${marca}">${marca}</div>`;
+    groups[marca].forEach(item=>{
+      const isZ=item.qty===0;
+      const isS=item.nota&&item.nota!=='CERO'&&(item.nota.includes('reparación')||item.nota.includes('½'));
+      const cls=isZ?'zero':isS?'special':'';
+      html+=`<div class="item ${cls}" id="ai-${item.id}">
+        <div class="item-main" onclick="toggleEdit('ai',${item.id})">
+          <div class="item-info">
+            <div class="item-model">${item.modelo}</div>
+            <div class="item-meta"><span class="tag">${item.voltaje}</span><span class="tag">${item.ton}</span></div>
+          </div>
+          <div class="item-qty">${item.qty}</div>
+        </div>
+        ${item.nota&&item.nota!=='CERO'?`<div class="item-note">⚠ ${item.nota}</div>`:''}
+        <div class="editor" id="ed-ai-${item.id}">
+          <div class="field-row">
+            <div class="field"><label>Marca</label>
+              <select onchange="patchAire(${item.id},'marca',this.value)">
+                ${['MIRAGE','DUVENTUS','COLDEN','OTRA'].map(m=>`<option ${item.marca===m?'selected':''}>${m}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field"><label>Modelo</label>
+              <input type="text" value="${item.modelo}" onchange="patchAire(${item.id},'modelo',this.value)">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Voltaje</label>
+              <select onchange="patchAire(${item.id},'voltaje',this.value)">
+                ${['110v','220v'].map(v=>`<option ${item.voltaje===v?'selected':''}>${v}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field"><label>Tonelaje</label>
+              <select onchange="patchAire(${item.id},'ton',this.value)">
+                ${['1 ton','1.5 ton','2 ton','3 ton'].map(t=>`<option ${item.ton===t?'selected':''}>${t}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="field"><label>Cantidad</label>
+            <div class="qty-row">
+              <button class="qty-btn" onclick="adjDB('aire',${item.id},-1)">−</button>
+              <input class="qty-input" type="number" id="qai-${item.id}" value="${item.qty}" onchange="patchAire(${item.id},'qty',parseInt(this.value)||0)">
+              <button class="qty-btn" onclick="adjDB('aire',${item.id},1)">+</button>
+            </div>
+          </div>
+          <div class="field"><label>Nota</label>
+            <input type="text" value="${item.nota||''}" placeholder="opcional" onchange="patchAire(${item.id},'nota',this.value)">
+          </div>
+          <div class="editor-actions">
+            <button class="btn btn-ghost" style="flex:1" onclick="toggleEdit('ai',${item.id})">Cerrar</button>
+            <button class="btn btn-danger" onclick="delItem('aire',${item.id})">🗑 Eliminar</button>
+          </div>
+        </div>
+      </div>`;
+    });
+    html+='</div>';
+  });
+  list.innerHTML=html;
+}
+
+// ── RENDER MATERIALES ──
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function renderMats(){
+  const list=document.getElementById('listMat');
+  if(!mats.length){list.innerHTML='<div class="empty">Sin materiales aún.<br>Agrega cables, breakers, bases, etc.</div>';updateStats();return;}
+  const wrap=document.createElement('div');
+  wrap.className='marca-group';
+  const hdr=document.createElement('div');
+  hdr.className='marca-header MATERIAL';
+  hdr.textContent='MATERIALES';
+  wrap.appendChild(hdr);
+  mats.forEach(item=>{
+    const isZ=item.qty===0;
+    const card=document.createElement('div');
+    card.className='item'+(isZ?' zero':'');
+    card.id='mt-'+item.id;
+    const main=document.createElement('div');
+    main.className='item-main';
+    main.innerHTML='<div class="item-info"><div class="item-model">'+esc(item.nombre)+'</div>'+(item.nota?'<div class="item-meta"><span class="tag">'+esc(item.nota)+'</span></div>':'')+'</div><div class="item-qty">'+item.qty+'</div>';
+    main.addEventListener('click',()=>toggleEdit('mt',item.id));
+    card.appendChild(main);
+    const ed=document.createElement('div');
+    ed.className='editor';
+    ed.id='ed-mt-'+item.id;
+    // Nombre
+    const fN=document.createElement('div');fN.className='field';
+    const lN=document.createElement('label');lN.textContent='Nombre';
+    const iN=document.createElement('input');iN.type='text';iN.value=item.nombre||'';
+    fN.appendChild(lN);fN.appendChild(iN);
+    // Cantidad
+    const fQ=document.createElement('div');fQ.className='field';
+    const lQ=document.createElement('label');lQ.textContent='Cantidad';
+    const qR=document.createElement('div');qR.className='qty-row';
+    const bM=document.createElement('button');bM.className='qty-btn';bM.textContent='−';
+    const iQ=document.createElement('input');iQ.type='number';iQ.className='qty-input';iQ.id='qmt-'+item.id;iQ.value=item.qty;iQ.min=0;
+    const bP=document.createElement('button');bP.className='qty-btn';bP.textContent='+';
+    bM.addEventListener('click',()=>adjDB('mat',item.id,-1));
+    bP.addEventListener('click',()=>adjDB('mat',item.id,1));
+    qR.appendChild(bM);qR.appendChild(iQ);qR.appendChild(bP);
+    fQ.appendChild(lQ);fQ.appendChild(qR);
+    // Nota
+    const fT=document.createElement('div');fT.className='field';
+    const lT=document.createElement('label');lT.textContent='Nota';
+    const iT=document.createElement('input');iT.type='text';iT.value=item.nota||'';iT.placeholder='opcional';
+    fT.appendChild(lT);fT.appendChild(iT);
+    // Actions
+    const acts=document.createElement('div');acts.className='editor-actions';
+    const bSv=document.createElement('button');bSv.className='btn btn-primary';bSv.style.flex='1';bSv.textContent='Guardar';
+    const bDl=document.createElement('button');bDl.className='btn btn-danger';bDl.textContent='🗑 Eliminar';
+    bSv.addEventListener('click',async()=>{
+      await patchMat(item.id,'nombre',iN.value);
+      await patchMat(item.id,'qty',parseInt(iQ.value)||0);
+      await patchMat(item.id,'nota',iT.value);
+      toggleEdit('mt',item.id);
+    });
+    bDl.addEventListener('click',()=>delItem('mat',item.id));
+    acts.appendChild(bSv);acts.appendChild(bDl);
+    ed.appendChild(fN);ed.appendChild(fQ);ed.appendChild(fT);ed.appendChild(acts);
+    card.appendChild(ed);
+    wrap.appendChild(card);
+  });
+  list.innerHTML='';
+  list.appendChild(wrap);
+  updateStats();
+}
+
+// ── TOGGLE EDIT ──
+function toggleEdit(pfx,id){
+  const edId=`ed-${pfx}-${id}`;
+  const itemId=`${pfx}-${id}`;
+  const ed=document.getElementById(edId);
+  const it=document.getElementById(itemId);
+  const isOpen=ed.classList.contains('open');
+  document.querySelectorAll('.editor.open').forEach(e=>e.classList.remove('open'));
+  document.querySelectorAll('.item.editing').forEach(e=>e.classList.remove('editing'));
+  if(!isOpen){ed.classList.add('open');it.classList.add('editing');setTimeout(()=>it.scrollIntoView({behavior:'smooth',block:'nearest'}),100);}
+}
+
+// ── PATCH AIRE ──
+async function patchAire(id,field,value){
+  if(field==='qty')value=Math.max(0,parseInt(value)||0);
+  const item=aires.find(r=>r.id===id);if(!item)return;
+  item[field]=value;
+  try{await api(`inventario?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({[field]:value,updated_at:new Date().toISOString()})});showToast('✓');}
+  catch(e){showToast('Error',true);}
+  renderAires();
+  setTimeout(()=>{const ed=document.getElementById(`ed-ai-${id}`);const it=document.getElementById(`ai-${id}`);if(ed&&it){ed.classList.add('open');it.classList.add('editing');}},10);
+}
+
+// ── PATCH MAT ──
+async function patchMat(id,field,value){
+  if(field==='qty')value=Math.max(0,parseInt(value)||0);
+  const item=mats.find(r=>r.id===id);if(!item)return;
+  item[field]=value;
+  try{await api(`materiales?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({[field]:value,updated_at:new Date().toISOString()})});showToast('✓');}
+  catch(e){showToast('Error',true);}
+  renderMats();
+  setTimeout(()=>{const ed=document.getElementById(`ed-mt-${id}`);const it=document.getElementById(`mt-${id}`);if(ed&&it){ed.classList.add('open');it.classList.add('editing');}},10);
+}
+
+// ── ADJ QTY ──
+async function adjDB(type,id,delta){
+  if(type==='aire'){
+    const item=aires.find(r=>r.id===id);if(!item)return;
+    item.qty=Math.max(0,item.qty+delta);
+    const el=document.getElementById(`qai-${id}`);
+    const mq=document.querySelector(`#ai-${id} .item-qty`);
+    if(el)el.value=item.qty;if(mq)mq.textContent=item.qty;
+    updateStats();
+    try{await api(`inventario?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({qty:item.qty,updated_at:new Date().toISOString()})});}
+    catch(e){showToast('Error',true);}
+  }else{
+    const item=mats.find(r=>r.id===id);if(!item)return;
+    item.qty=Math.max(0,item.qty+delta);
+    const el=document.getElementById(`qmt-${id}`);
+    const mq=document.querySelector(`#mt-${id} .item-qty`);
+    if(el)el.value=item.qty;if(mq)mq.textContent=item.qty;
+    updateStats();
+    try{await api(`materiales?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({qty:item.qty,updated_at:new Date().toISOString()})});}
+    catch(e){showToast('Error',true);}
+  }
+}
+
+// ── DELETE ──
+async function delItem(type,id){
+  if(!confirm('¿Eliminar?'))return;
+  try{
+    if(type==='aire'){await api(`inventario?id=eq.${id}`,{method:'DELETE'});aires=aires.filter(r=>r.id!==id);renderAires();}
+    else{await api(`materiales?id=eq.${id}`,{method:'DELETE'});mats=mats.filter(r=>r.id!==id);renderMats();}
+    showToast('Eliminado');updateStats();
+  }catch(e){showToast('Error',true);}
+}
+
+// ── ADD AIRE ──
+function adj(id,delta){const el=document.getElementById(id);el.value=Math.max(0,(parseInt(el.value)||0)+delta);}
+function openModal(t){document.getElementById(t==='aires'?'modalAires':'modalMat').classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+function closeModalBg(e,id){if(e.target===document.getElementById(id))closeModal(id);}
+
+async function addAire(){
+  const marca=document.getElementById('nMarca').value;
+  const modelo=document.getElementById('nModelo').value.trim();
+  const voltaje=document.getElementById('nVoltaje').value;
+  const ton=document.getElementById('nTon').value;
+  const qty=parseInt(document.getElementById('nQtyA').value)||0;
+  const nota=document.getElementById('nNotaA').value.trim();
+  if(!modelo){alert('Escribe el modelo');return;}
+  try{
+    const rows=await api('inventario',{method:'POST',body:JSON.stringify({sucursal:branch,marca,modelo,voltaje,ton,qty,nota})});
+    aires.push(rows[0]);
+    aires.sort((a,b)=>{const mo={COLDEN:0,DUVENTUS:1,MIRAGE:2};return(mo[a.marca]??3)-(mo[b.marca]??3)||a.modelo.localeCompare(b.modelo);});
+    closeModal('modalAires');
+    document.getElementById('nModelo').value='';document.getElementById('nQtyA').value='0';document.getElementById('nNotaA').value='';
+    renderAires();updateStats();showToast('Aire agregado ✓');
+  }catch(e){showToast('Error al agregar',true);}
+}
+
+async function addMat(){
+  const nombre=document.getElementById('nNombre').value.trim();
+  const qty=parseInt(document.getElementById('nQtyM').value)||0;
+  const nota=document.getElementById('nNotaM').value.trim();
+  if(!nombre){alert('Escribe el nombre');return;}
+  try{
+    const rows=await api('materiales',{method:'POST',body:JSON.stringify({sucursal:branch,nombre,qty,nota})});
+    mats.push(rows[0]);
+    mats.sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    closeModal('modalMat');
+    document.getElementById('nNombre').value='';document.getElementById('nQtyM').value='0';document.getElementById('nNotaM').value='';
+    renderMats();updateStats();showToast('Material agregado ✓');
+  }catch(e){showToast('Error al agregar',true);}
+}
+
+// ── TOAST ──
+function showToast(msg,err=false){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.className='toast'+(err?' err':'');
+  t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);
+}
+</script>
+</body>
+</html>
