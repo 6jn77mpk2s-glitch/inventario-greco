@@ -6,7 +6,7 @@
 <title>Inventario — Climas Greco</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
-:root {
+:root{
   --bg:#0f1117;--surface:#171c28;--card:#1e2436;--border:#2a3148;
   --accent:#3b82f6;--accent2:#60a5fa;
   --red:#ef4444;--red-bg:#1f1115;
@@ -31,20 +31,16 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .pin-err{color:var(--red);font-size:12px;}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
 
-/* BRANCH SELECTOR */
+/* BRANCH */
 .branch-screen{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:998;gap:28px;padding:32px;}
 .branch-screen.show{display:flex;}
-.branch-title{font-size:20px;font-weight:700;text-align:center;}
-.branch-sub{font-size:13px;color:var(--muted);}
+.branch-title{font-size:20px;font-weight:700;}
 .branch-cards{display:flex;flex-direction:column;gap:12px;width:100%;max-width:320px;}
 .branch-card{background:var(--card);border:2px solid var(--border);border-radius:14px;padding:18px 20px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:all .15s;}
-.branch-card:active{transform:scale(0.97);}
-.branch-card.sur{border-color:rgba(59,130,246,0.4);}
-.branch-card.centro{border-color:rgba(34,197,94,0.4);}
-.branch-card.soriana{border-color:rgba(234,179,8,0.4);}
-.branch-card:hover.sur{background:rgba(59,130,246,0.08);}
-.branch-card:hover.centro{background:rgba(34,197,94,0.08);}
-.branch-card:hover.soriana{background:rgba(234,179,8,0.08);}
+.branch-card:active{transform:scale(.97);}
+.branch-card.sur{border-color:rgba(59,130,246,.4);}
+.branch-card.centro{border-color:rgba(34,197,94,.4);}
+.branch-card.soriana{border-color:rgba(234,179,8,.4);}
 .branch-name{font-size:17px;font-weight:700;}
 .branch-card.sur .branch-name{color:var(--accent2);}
 .branch-card.centro .branch-name{color:var(--green);}
@@ -52,13 +48,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .branch-arrow{color:var(--muted);font-size:20px;}
 
 /* HEADER */
-header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 16px 12px;position:sticky;top:0;z-index:100;border-bottom:1px solid #1e3a5c;box-shadow:0 4px 24px rgba(0,0,0,0.4);}
+header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 16px 12px;position:sticky;top:0;z-index:100;border-bottom:1px solid #1e3a5c;box-shadow:0 4px 24px rgba(0,0,0,.4);}
 .header-top{display:flex;justify-content:space-between;align-items:center;}
 .logo{font-size:16px;font-weight:700;}.logo span{color:var(--accent2);}
-.branch-pill{font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:20px;letter-spacing:1px;cursor:pointer;font-weight:700;}
-.branch-pill.sur{background:rgba(59,130,246,0.2);color:var(--accent2);border:1px solid rgba(59,130,246,0.4);}
-.branch-pill.centro{background:rgba(34,197,94,0.2);color:var(--green);border:1px solid rgba(34,197,94,0.4);}
-.branch-pill.soriana{background:rgba(234,179,8,0.2);color:var(--yellow);border:1px solid rgba(234,179,8,0.4);}
+.branch-pill{font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:20px;cursor:pointer;font-weight:700;}
+.branch-pill.sur{background:rgba(59,130,246,.2);color:var(--accent2);border:1px solid rgba(59,130,246,.4);}
+.branch-pill.centro{background:rgba(34,197,94,.2);color:var(--green);border:1px solid rgba(34,197,94,.4);}
+.branch-pill.soriana{background:rgba(234,179,8,.2);color:var(--yellow);border:1px solid rgba(234,179,8,.4);}
 .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block;margin-left:5px;vertical-align:middle;transition:background .3s;}
 .sync-dot.ok{background:var(--green);}.sync-dot.syncing{background:var(--yellow);}.sync-dot.error{background:var(--red);}
 .stats-bar{display:flex;gap:14px;margin-top:10px;}
@@ -79,6 +75,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .btn-primary:active{background:#2563eb;transform:scale(.97);}
 .btn-ghost{background:var(--card);color:var(--text);border:1px solid var(--border);}
 .btn-ghost:active{background:var(--border);transform:scale(.97);}
+.btn-cancel{background:transparent;color:var(--muted);border:1px solid var(--border);}
 .btn-danger{background:transparent;color:var(--red);border:1px solid rgba(239,68,68,.3);}
 
 /* FILTER */
@@ -96,12 +93,12 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .marca-header.MIRAGE{color:var(--accent2);border-color:rgba(96,165,250,.3);}
 .marca-header.MATERIAL{color:var(--orange);border-color:rgba(249,115,22,.3);}
 
-/* ITEM */
+/* ITEM CARD */
 .item{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .15s;}
 .item.zero{background:var(--red-bg);border-color:rgba(239,68,68,.25);}
 .item.special{background:var(--orange-bg);border-color:rgba(249,115,22,.25);}
 .item.editing{border-color:var(--accent);}
-.item-main{display:flex;align-items:center;padding:9px 12px;gap:10px;cursor:pointer;}
+.item-main{display:flex;align-items:center;padding:9px 12px;gap:10px;cursor:pointer;user-select:none;}
 .item-info{flex:1;min-width:0;}
 .item-model{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .item.zero .item-model{color:var(--red);}
@@ -110,25 +107,40 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .tag{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border);}
 .item.zero .tag{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.2);color:var(--red);}
 .item.special .tag{background:rgba(249,115,22,.1);border-color:rgba(249,115,22,.2);color:var(--orange);}
-.item-qty{font-family:var(--mono);font-size:26px;font-weight:500;min-width:44px;text-align:center;line-height:1;}
+/* Quantity badge — READ ONLY */
+.item-qty{font-family:var(--mono);font-size:26px;font-weight:500;min-width:44px;text-align:center;line-height:1;pointer-events:none;user-select:none;}
 .item.zero .item-qty{color:var(--red);}
 .item.special .item-qty{color:var(--orange);}
 .item-note{font-size:10px;color:var(--orange);padding:0 12px 7px;font-style:italic;}
 
 /* EDITOR */
-.editor{display:none;padding:11px;border-top:1px solid var(--border);background:rgba(0,0,0,.2);gap:9px;flex-direction:column;}
+.editor{display:none;padding:12px;border-top:1px solid var(--border);background:rgba(0,0,0,.25);flex-direction:column;gap:10px;}
 .editor.open{display:flex;}
 .field-row{display:flex;gap:8px;flex-wrap:wrap;}
 .field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:100px;}
 .field label{font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;}
 .field input,.field select{font-family:var(--mono);font-size:13px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 9px;border-radius:7px;width:100%;outline:none;transition:border-color .15s;-webkit-appearance:none;}
 .field input:focus,.field select:focus{border-color:var(--accent);}
+.field input[readonly]{color:var(--muted);cursor:default;}
+
+/* Qty agregar block */
+.qty-block{background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;}
+.qty-actual-row{display:flex;justify-content:space-between;align-items:center;}
+.qty-actual-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.qty-actual-val{font-family:var(--mono);font-size:20px;font-weight:500;color:var(--text);}
+.qty-agregar-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;}
 .qty-row{display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:7px;overflow:hidden;}
 .qty-btn{background:none;border:none;color:var(--text);font-size:22px;width:42px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s;font-family:var(--mono);}
 .qty-btn:active{background:var(--border);}
 .qty-input{flex:1;text-align:center;font-family:var(--mono);font-size:18px;background:none;border:none;color:var(--text);outline:none;padding:0;-moz-appearance:textfield;}
 .qty-input::-webkit-inner-spin-button{display:none;}
+.qty-total-row{display:flex;justify-content:space-between;align-items:center;padding-top:4px;border-top:1px solid rgba(59,130,246,.15);}
+.qty-total-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.qty-total-val{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--accent2);}
+
+/* Editor actions */
 .editor-actions{display:flex;gap:8px;}
+.editor-del{margin-top:2px;}
 
 /* MODAL */
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:flex-end;backdrop-filter:blur(4px);}
@@ -136,18 +148,16 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .modal-sheet{background:var(--surface);border-radius:20px 20px 0 0;padding:20px 16px 32px;width:100%;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:12px;max-height:90vh;overflow-y:auto;}
 .modal-title{font-size:16px;font-weight:700;}
 
-/* LOADING */
+/* LOADING / EMPTY */
 .loading{text-align:center;padding:50px 20px;color:var(--muted);}
 .spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px;}
 @keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:13px;}
 
 /* TOAST */
 .toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--green);color:#0a1a0f;font-weight:700;font-size:13px;padding:9px 18px;border-radius:30px;opacity:0;transition:all .3s;z-index:300;white-space:nowrap;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 .toast.err{background:var(--red);color:white;}
-
-/* EMPTY */
-.empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:13px;}
 </style>
 </head>
 <body>
@@ -163,36 +173,27 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   </div>
 </div>
 
-<!-- BRANCH SELECTOR -->
+<!-- BRANCH -->
 <div class="branch-screen" id="branchScreen">
   <div class="pin-logo">Climas <span>Greco</span></div>
   <div class="branch-title">¿Qué sucursal?</div>
   <div class="branch-cards">
     <div class="branch-card sur" onclick="selectBranch('sur')">
-      <div>
-        <div class="branch-name">SUR</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">Sucursal Sur</div>
-      </div>
+      <div><div class="branch-name">SUR</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Sucursal Sur</div></div>
       <div class="branch-arrow">›</div>
     </div>
     <div class="branch-card centro" onclick="selectBranch('centro')">
-      <div>
-        <div class="branch-name">CENTRO</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">Sucursal Centro</div>
-      </div>
+      <div><div class="branch-name">CENTRO</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Sucursal Centro</div></div>
       <div class="branch-arrow">›</div>
     </div>
     <div class="branch-card soriana" onclick="selectBranch('soriana')">
-      <div>
-        <div class="branch-name">SORIANA</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">Sucursal Soriana / Norte</div>
-      </div>
+      <div><div class="branch-name">SORIANA</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Sucursal Norte / Soriana</div></div>
       <div class="branch-arrow">›</div>
     </div>
   </div>
 </div>
 
-<!-- MAIN APP -->
+<!-- APP -->
 <div id="app" style="display:none">
   <header>
     <div class="header-top">
@@ -214,7 +215,6 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="tab" id="tabMat" onclick="switchTab('materiales')">📦 MATERIALES</div>
   </div>
 
-  <!-- AIRES SECTION -->
   <div id="secAires">
     <div class="controls">
       <button class="btn btn-primary" onclick="openModal('aires')">+ Agregar aire</button>
@@ -233,7 +233,6 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="list" id="listAires"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
 
-  <!-- MATERIALES SECTION -->
   <div id="secMat" style="display:none">
     <div class="controls">
       <button class="btn btn-primary" onclick="openModal('mat')">+ Agregar material</button>
@@ -243,7 +242,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   </div>
 </div>
 
-<!-- MODAL AGREGAR AIRE -->
+<!-- MODAL AIRE -->
 <div class="modal" id="modalAires" onclick="closeModalBg(event,'modalAires')">
   <div class="modal-sheet">
     <div class="modal-title">➕ Agregar aire</div>
@@ -261,7 +260,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
         <select id="nTon"><option>1 ton</option><option>1.5 ton</option><option>2 ton</option><option>3 ton</option></select>
       </div>
     </div>
-    <div class="field"><label>Cantidad</label>
+    <div class="field"><label>Cantidad inicial</label>
       <div class="qty-row">
         <button class="qty-btn" onclick="adj('nQtyA',-1)">−</button>
         <input class="qty-input" type="number" id="nQtyA" value="0" min="0">
@@ -271,17 +270,17 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="field"><label>Nota (opcional)</label><input type="text" id="nNotaA" placeholder="ej. En reparación"></div>
     <div class="editor-actions">
       <button class="btn btn-primary" style="flex:1" onclick="addAire()">Guardar</button>
-      <button class="btn btn-ghost" onclick="closeModal('modalAires')">Cancelar</button>
+      <button class="btn btn-cancel" onclick="closeModal('modalAires')">Cancelar</button>
     </div>
   </div>
 </div>
 
-<!-- MODAL AGREGAR MATERIAL -->
+<!-- MODAL MATERIAL -->
 <div class="modal" id="modalMat" onclick="closeModalBg(event,'modalMat')">
   <div class="modal-sheet">
     <div class="modal-title">➕ Agregar material</div>
-    <div class="field"><label>Nombre</label><input type="text" id="nNombre" placeholder="ej. Rollo cable 12, Breaker 30A, Base para minisplit"></div>
-    <div class="field"><label>Cantidad</label>
+    <div class="field"><label>Nombre</label><input type="text" id="nNombre" placeholder="ej. Rollo cable 12, Breaker 30A"></div>
+    <div class="field"><label>Cantidad inicial</label>
       <div class="qty-row">
         <button class="qty-btn" onclick="adj('nQtyM',-1)">−</button>
         <input class="qty-input" type="number" id="nQtyM" value="0" min="0">
@@ -291,7 +290,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="field"><label>Nota (opcional)</label><input type="text" id="nNotaM" placeholder="opcional"></div>
     <div class="editor-actions">
       <button class="btn btn-primary" style="flex:1" onclick="addMat()">Guardar</button>
-      <button class="btn btn-ghost" onclick="closeModal('modalMat')">Cancelar</button>
+      <button class="btn btn-cancel" onclick="closeModal('modalMat')">Cancelar</button>
     </div>
   </div>
 </div>
@@ -299,18 +298,13 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 <div class="toast" id="toast"></div>
 
 <script>
-const URL_SB  = 'https://mvenmzrfkmyfftwswxtq.supabase.co';
-const KEY_SB  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZW5tenJma215ZmZ0d3N3eHRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTYxMTUsImV4cCI6MjA5MjUzMjExNX0.Rged1qWORiY2l7wLL9rM-aRvEnwJa58BVBdYvLI4qyw';
-const PIN     = '18';
+const URL_SB='https://mvenmzrfkmyfftwswxtq.supabase.co';
+const KEY_SB='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZW5tenJma215ZmZ0d3N3eHRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTYxMTUsImV4cCI6MjA5MjUzMjExNX0.Rged1qWORiY2l7wLL9rM-aRvEnwJa58BVBdYvLI4qyw';
+const PIN='18';
 
-let branch = null;
-let aires  = [];
-let mats   = [];
-let activeFilter = 'ALL';
-let filterVisible = false;
-let activeTab = 'aires';
+let branch=null,aires=[],mats=[],activeFilter='ALL',filterVisible=false,activeTab='aires';
 
-const SUR_DEFAULT = [
+const SUR_DEFAULT=[
   {marca:"COLDEN",  modelo:"Colden",       voltaje:"220v",ton:"1 ton",  qty:24,nota:""},
   {marca:"DUVENTUS",modelo:"Advances",     voltaje:"110v",ton:"1 ton",  qty:2, nota:""},
   {marca:"DUVENTUS",modelo:"Advances",     voltaje:"220v",ton:"1 ton",  qty:8, nota:""},
@@ -339,17 +333,23 @@ const SUR_DEFAULT = [
 ];
 
 // ── API ──
-const hdrs = () => ({'apikey':KEY_SB,'Authorization':'Bearer '+KEY_SB,'Content-Type':'application/json','Prefer':'return=representation'});
+const hdrs=()=>({'apikey':KEY_SB,'Authorization':'Bearer '+KEY_SB,'Content-Type':'application/json','Prefer':'return=representation'});
 function setSyncDot(s){const d=document.getElementById('syncDot');if(d)d.className='sync-dot '+s;}
-
 async function api(path,opts={}){
   setSyncDot('syncing');
-  try{
-    const r=await fetch(URL_SB+'/rest/v1/'+path,{headers:hdrs(),...opts});
+  try{const r=await fetch(URL_SB+'/rest/v1/'+path,{headers:hdrs(),...opts});
     if(!r.ok)throw new Error(await r.text());
-    const j=r.status===204?[]:await r.json();
-    setSyncDot('ok');return j;
+    const j=r.status===204?[]:await r.json();setSyncDot('ok');return j;
   }catch(e){setSyncDot('error');throw e;}
+}
+
+// ── HELPERS ──
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function adj(id,d){const el=document.getElementById(id);el.value=Math.max(0,(parseInt(el.value)||0)+d);}
+function showToast(msg,err=false){
+  const t=document.getElementById('toast');t.textContent=msg;
+  t.className='toast'+(err?' err':'');t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2000);
 }
 
 // ── PIN ──
@@ -359,8 +359,7 @@ function checkPin(){
     document.getElementById('pinScreen').style.display='none';
     document.getElementById('branchScreen').classList.add('show');
   }else{
-    const i=document.getElementById('pinInput');
-    i.classList.add('error');
+    const i=document.getElementById('pinInput');i.classList.add('error');
     document.getElementById('pinErr').textContent='Código incorrecto';
     setTimeout(()=>{i.classList.remove('error');i.value='';document.getElementById('pinErr').textContent='';},1200);
   }
@@ -372,11 +371,9 @@ function selectBranch(b){
   document.getElementById('branchScreen').classList.remove('show');
   document.getElementById('app').style.display='block';
   const pill=document.getElementById('branchPill');
-  pill.textContent=b.toUpperCase()+' ↩';
-  pill.className='branch-pill '+b;
+  pill.textContent=b.toUpperCase()+' ↩';pill.className='branch-pill '+b;
   loadAll();
 }
-
 function goBack(){
   document.getElementById('app').style.display='none';
   document.getElementById('branchScreen').classList.add('show');
@@ -386,19 +383,14 @@ function goBack(){
 // ── LOAD ──
 async function loadAll(){
   try{
-    // Load aires
     let rows=await api(`inventario?select=*&sucursal=eq.${branch}&order=marca.asc,modelo.asc,voltaje.asc`);
-    if(rows.length===0 && branch==='sur'){
-      const seeded=SUR_DEFAULT.map(r=>({...r,sucursal:'sur'}));
-      await api('inventario',{method:'POST',body:JSON.stringify(seeded)});
+    if(rows.length===0&&branch==='sur'){
+      await api('inventario',{method:'POST',body:JSON.stringify(SUR_DEFAULT.map(r=>({...r,sucursal:'sur'})))});
       rows=await api(`inventario?select=*&sucursal=eq.${branch}&order=marca.asc,modelo.asc,voltaje.asc`);
     }
     aires=rows;
-    // Load materiales
     mats=await api(`materiales?select=*&sucursal=eq.${branch}&order=nombre.asc`);
-    renderAires();
-    renderMats();
-    updateStats();
+    renderAires();renderMats();updateStats();
   }catch(e){
     document.getElementById('listAires').innerHTML=`<div class="loading" style="color:var(--red)">Error: ${e.message}</div>`;
   }
@@ -431,6 +423,173 @@ function matches(item){
   return item.marca===activeFilter;
 }
 
+// ── TOGGLE EDIT ──
+function closeAllEditors(){
+  document.querySelectorAll('.editor.open').forEach(e=>e.classList.remove('open'));
+  document.querySelectorAll('.item.editing').forEach(e=>e.classList.remove('editing'));
+}
+function toggleEdit(pfx,id){
+  const ed=document.getElementById(`ed-${pfx}-${id}`);
+  const it=document.getElementById(`${pfx}-${id}`);
+  if(!ed||!it)return;
+  const isOpen=ed.classList.contains('open');
+  closeAllEditors();
+  if(!isOpen){
+    ed.classList.add('open');it.classList.add('editing');
+    setTimeout(()=>it.scrollIntoView({behavior:'smooth',block:'nearest'}),100);
+  }
+}
+
+// ── BUILD AIRE EDITOR (DOM) ──
+function buildAireEditor(item){
+  const ed=document.createElement('div');
+  ed.className='editor';ed.id='ed-ai-'+item.id;
+
+  // Marca + Modelo
+  const r1=document.createElement('div');r1.className='field-row';
+  const fMarca=mkField('Marca');
+  const sMarca=document.createElement('select');
+  ['MIRAGE','DUVENTUS','COLDEN','OTRA'].forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;if(item.marca===m)o.selected=true;sMarca.appendChild(o);});
+  fMarca.appendChild(sMarca);
+  const fModelo=mkField('Modelo');
+  const iModelo=document.createElement('input');iModelo.type='text';iModelo.value=item.modelo||'';
+  fModelo.appendChild(iModelo);
+  r1.appendChild(fMarca);r1.appendChild(fModelo);
+
+  // Voltaje + Ton
+  const r2=document.createElement('div');r2.className='field-row';
+  const fVolt=mkField('Voltaje');
+  const sVolt=document.createElement('select');
+  ['110v','220v'].forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;if(item.voltaje===v)o.selected=true;sVolt.appendChild(o);});
+  fVolt.appendChild(sVolt);
+  const fTon=mkField('Tonelaje');
+  const sTon=document.createElement('select');
+  ['1 ton','1.5 ton','2 ton','3 ton'].forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;if(item.ton===t)o.selected=true;sTon.appendChild(o);});
+  fTon.appendChild(sTon);
+  r2.appendChild(fVolt);r2.appendChild(fTon);
+
+  // Qty block
+  const qBlock=buildQtyBlock(item.qty,'ai-add-'+item.id);
+
+  // Nota
+  const fNota=mkField('Nota');
+  const iNota=document.createElement('input');iNota.type='text';iNota.value=item.nota||'';iNota.placeholder='opcional';
+  fNota.appendChild(iNota);
+
+  // Actions
+  const acts=document.createElement('div');acts.className='editor-actions';
+  const bSave=document.createElement('button');bSave.className='btn btn-primary';bSave.style.flex='1';bSave.textContent='Guardar';
+  const bCancel=document.createElement('button');bCancel.className='btn btn-cancel';bCancel.textContent='Cancelar';
+  const bDel=document.createElement('button');bDel.className='btn btn-danger editor-del';bDel.textContent='🗑';
+
+  bSave.addEventListener('click',async()=>{
+    const addVal=parseInt(document.getElementById('ai-add-'+item.id).value)||0;
+    const newQty=Math.max(0,item.qty+addVal);
+    const updates={
+      marca:sMarca.value,modelo:iModelo.value.trim(),
+      voltaje:sVolt.value,ton:sTon.value,
+      qty:newQty,nota:iNota.value.trim(),
+      updated_at:new Date().toISOString()
+    };
+    try{
+      await api(`inventario?id=eq.${item.id}`,{method:'PATCH',body:JSON.stringify(updates)});
+      Object.assign(item,updates);
+      showToast('Guardado ✓');
+      closeAllEditors();
+      renderAires();updateStats();
+    }catch(e){showToast('Error al guardar',true);}
+  });
+  bCancel.addEventListener('click',()=>toggleEdit('ai',item.id));
+  bDel.addEventListener('click',()=>delItem('aire',item.id));
+
+  acts.appendChild(bSave);acts.appendChild(bCancel);acts.appendChild(bDel);
+  ed.appendChild(r1);ed.appendChild(r2);ed.appendChild(qBlock);ed.appendChild(fNota);ed.appendChild(acts);
+  return ed;
+}
+
+// ── BUILD MAT EDITOR (DOM) ──
+function buildMatEditor(item){
+  const ed=document.createElement('div');
+  ed.className='editor';ed.id='ed-mt-'+item.id;
+
+  const fNombre=mkField('Nombre');
+  const iNombre=document.createElement('input');iNombre.type='text';iNombre.value=item.nombre||'';
+  fNombre.appendChild(iNombre);
+
+  const qBlock=buildQtyBlock(item.qty,'mt-add-'+item.id);
+
+  const fNota=mkField('Nota');
+  const iNota=document.createElement('input');iNota.type='text';iNota.value=item.nota||'';iNota.placeholder='opcional';
+  fNota.appendChild(iNota);
+
+  const acts=document.createElement('div');acts.className='editor-actions';
+  const bSave=document.createElement('button');bSave.className='btn btn-primary';bSave.style.flex='1';bSave.textContent='Guardar';
+  const bCancel=document.createElement('button');bCancel.className='btn btn-cancel';bCancel.textContent='Cancelar';
+  const bDel=document.createElement('button');bDel.className='btn btn-danger editor-del';bDel.textContent='🗑';
+
+  bSave.addEventListener('click',async()=>{
+    const addVal=parseInt(document.getElementById('mt-add-'+item.id).value)||0;
+    const newQty=Math.max(0,item.qty+addVal);
+    const updates={nombre:iNombre.value.trim(),qty:newQty,nota:iNota.value.trim(),updated_at:new Date().toISOString()};
+    try{
+      await api(`materiales?id=eq.${item.id}`,{method:'PATCH',body:JSON.stringify(updates)});
+      Object.assign(item,updates);
+      showToast('Guardado ✓');
+      closeAllEditors();
+      renderMats();updateStats();
+    }catch(e){showToast('Error al guardar',true);}
+  });
+  bCancel.addEventListener('click',()=>toggleEdit('mt',item.id));
+  bDel.addEventListener('click',()=>delItem('mat',item.id));
+
+  acts.appendChild(bSave);acts.appendChild(bCancel);acts.appendChild(bDel);
+  ed.appendChild(fNombre);ed.appendChild(qBlock);ed.appendChild(fNota);ed.appendChild(acts);
+  return ed;
+}
+
+// ── QTY BLOCK ──
+function buildQtyBlock(currentQty, inputId){
+  const block=document.createElement('div');block.className='qty-block';
+  // Actual
+  const rowA=document.createElement('div');rowA.className='qty-actual-row';
+  const lA=document.createElement('span');lA.className='qty-actual-lbl';lA.textContent='Cantidad actual';
+  const vA=document.createElement('span');vA.className='qty-actual-val';vA.textContent=currentQty;
+  rowA.appendChild(lA);rowA.appendChild(vA);
+  // Agregar label
+  const lAg=document.createElement('div');lAg.className='qty-agregar-lbl';lAg.textContent='Agregar / Quitar';
+  // +/- row
+  const qR=document.createElement('div');qR.className='qty-row';
+  const bM=document.createElement('button');bM.className='qty-btn';bM.textContent='−';bM.type='button';
+  const iQ=document.createElement('input');iQ.type='number';iQ.className='qty-input';iQ.id=inputId;iQ.value=0;
+  const bP=document.createElement('button');bP.className='qty-btn';bP.textContent='+';bP.type='button';
+  // Total preview
+  const rowT=document.createElement('div');rowT.className='qty-total-row';
+  const lT=document.createElement('span');lT.className='qty-total-lbl';lT.textContent='Total';
+  const vT=document.createElement('span');vT.className='qty-total-val';vT.textContent=currentQty;
+  rowT.appendChild(lT);rowT.appendChild(vT);
+
+  function updateTotal(){
+    const add=parseInt(iQ.value)||0;
+    const total=Math.max(0,currentQty+add);
+    vT.textContent=total;
+    vT.style.color=add>0?'var(--green)':add<0?'var(--red)':'var(--accent2)';
+  }
+  bM.addEventListener('click',()=>{iQ.value=(parseInt(iQ.value)||0)-1;updateTotal();});
+  bP.addEventListener('click',()=>{iQ.value=(parseInt(iQ.value)||0)+1;updateTotal();});
+  iQ.addEventListener('input',updateTotal);
+
+  qR.appendChild(bM);qR.appendChild(iQ);qR.appendChild(bP);
+  block.appendChild(rowA);block.appendChild(lAg);block.appendChild(qR);block.appendChild(rowT);
+  return block;
+}
+
+// ── FIELD HELPER ──
+function mkField(labelText){
+  const f=document.createElement('div');f.className='field';
+  const l=document.createElement('label');l.textContent=labelText;
+  f.appendChild(l);return f;
+}
+
 // ── RENDER AIRES ──
 function renderAires(){
   const list=document.getElementById('listAires');
@@ -440,203 +599,61 @@ function renderAires(){
   const groups={};
   filtered.forEach(item=>{if(!groups[item.marca])groups[item.marca]=[];groups[item.marca].push(item);});
   const marcas=Object.keys(groups).sort((a,b)=>(mo[a]??3)-(mo[b]??3));
-  let html='';
+  list.innerHTML='';
   marcas.forEach(marca=>{
-    html+=`<div class="marca-group"><div class="marca-header ${marca}">${marca}</div>`;
+    const grp=document.createElement('div');grp.className='marca-group';
+    const hdr=document.createElement('div');hdr.className='marca-header '+marca;hdr.textContent=marca;
+    grp.appendChild(hdr);
     groups[marca].forEach(item=>{
       const isZ=item.qty===0;
       const isS=item.nota&&item.nota!=='CERO'&&(item.nota.includes('reparación')||item.nota.includes('½'));
-      const cls=isZ?'zero':isS?'special':'';
-      html+=`<div class="item ${cls}" id="ai-${item.id}">
-        <div class="item-main" onclick="toggleEdit('ai',${item.id})">
-          <div class="item-info">
-            <div class="item-model">${item.modelo}</div>
-            <div class="item-meta"><span class="tag">${item.voltaje}</span><span class="tag">${item.ton}</span></div>
-          </div>
-          <div class="item-qty">${item.qty}</div>
-        </div>
-        ${item.nota&&item.nota!=='CERO'?`<div class="item-note">⚠ ${item.nota}</div>`:''}
-        <div class="editor" id="ed-ai-${item.id}">
-          <div class="field-row">
-            <div class="field"><label>Marca</label>
-              <select onchange="patchAire(${item.id},'marca',this.value)">
-                ${['MIRAGE','DUVENTUS','COLDEN','OTRA'].map(m=>`<option ${item.marca===m?'selected':''}>${m}</option>`).join('')}
-              </select>
-            </div>
-            <div class="field"><label>Modelo</label>
-              <input type="text" value="${item.modelo}" onchange="patchAire(${item.id},'modelo',this.value)">
-            </div>
-          </div>
-          <div class="field-row">
-            <div class="field"><label>Voltaje</label>
-              <select onchange="patchAire(${item.id},'voltaje',this.value)">
-                ${['110v','220v'].map(v=>`<option ${item.voltaje===v?'selected':''}>${v}</option>`).join('')}
-              </select>
-            </div>
-            <div class="field"><label>Tonelaje</label>
-              <select onchange="patchAire(${item.id},'ton',this.value)">
-                ${['1 ton','1.5 ton','2 ton','3 ton'].map(t=>`<option ${item.ton===t?'selected':''}>${t}</option>`).join('')}
-              </select>
-            </div>
-          </div>
-          <div class="field"><label>Cantidad</label>
-            <div class="qty-row">
-              <button class="qty-btn" onclick="adjDB('aire',${item.id},-1)">−</button>
-              <input class="qty-input" type="number" id="qai-${item.id}" value="${item.qty}" onchange="patchAire(${item.id},'qty',parseInt(this.value)||0)">
-              <button class="qty-btn" onclick="adjDB('aire',${item.id},1)">+</button>
-            </div>
-          </div>
-          <div class="field"><label>Nota</label>
-            <input type="text" value="${item.nota||''}" placeholder="opcional" onchange="patchAire(${item.id},'nota',this.value)">
-          </div>
-          <div class="editor-actions">
-            <button class="btn btn-ghost" style="flex:1" onclick="toggleEdit('ai',${item.id})">Cerrar</button>
-            <button class="btn btn-danger" onclick="delItem('aire',${item.id})">🗑 Eliminar</button>
-          </div>
-        </div>
-      </div>`;
+      const card=document.createElement('div');
+      card.className='item'+(isZ?' zero':isS?' special':'');card.id='ai-'+item.id;
+      const main=document.createElement('div');main.className='item-main';
+      main.innerHTML='<div class="item-info"><div class="item-model">'+esc(item.modelo)+'</div><div class="item-meta"><span class="tag">'+esc(item.voltaje)+'</span><span class="tag">'+esc(item.ton)+'</span></div></div><div class="item-qty">'+item.qty+'</div>';
+      main.addEventListener('click',()=>toggleEdit('ai',item.id));
+      card.appendChild(main);
+      if(item.nota&&item.nota!=='CERO'){const n=document.createElement('div');n.className='item-note';n.textContent='⚠ '+item.nota;card.appendChild(n);}
+      card.appendChild(buildAireEditor(item));
+      grp.appendChild(card);
     });
-    html+='</div>';
+    list.appendChild(grp);
   });
-  list.innerHTML=html;
 }
 
-// ── RENDER MATERIALES ──
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-
+// ── RENDER MATS ──
 function renderMats(){
   const list=document.getElementById('listMat');
   if(!mats.length){list.innerHTML='<div class="empty">Sin materiales aún.<br>Agrega cables, breakers, bases, etc.</div>';updateStats();return;}
-  const wrap=document.createElement('div');
-  wrap.className='marca-group';
-  const hdr=document.createElement('div');
-  hdr.className='marca-header MATERIAL';
-  hdr.textContent='MATERIALES';
-  wrap.appendChild(hdr);
+  list.innerHTML='';
+  const grp=document.createElement('div');grp.className='marca-group';
+  const hdr=document.createElement('div');hdr.className='marca-header MATERIAL';hdr.textContent='MATERIALES';
+  grp.appendChild(hdr);
   mats.forEach(item=>{
     const isZ=item.qty===0;
-    const card=document.createElement('div');
-    card.className='item'+(isZ?' zero':'');
-    card.id='mt-'+item.id;
-    const main=document.createElement('div');
-    main.className='item-main';
+    const card=document.createElement('div');card.className='item'+(isZ?' zero':'');card.id='mt-'+item.id;
+    const main=document.createElement('div');main.className='item-main';
     main.innerHTML='<div class="item-info"><div class="item-model">'+esc(item.nombre)+'</div>'+(item.nota?'<div class="item-meta"><span class="tag">'+esc(item.nota)+'</span></div>':'')+'</div><div class="item-qty">'+item.qty+'</div>';
     main.addEventListener('click',()=>toggleEdit('mt',item.id));
     card.appendChild(main);
-    const ed=document.createElement('div');
-    ed.className='editor';
-    ed.id='ed-mt-'+item.id;
-    // Nombre
-    const fN=document.createElement('div');fN.className='field';
-    const lN=document.createElement('label');lN.textContent='Nombre';
-    const iN=document.createElement('input');iN.type='text';iN.value=item.nombre||'';
-    fN.appendChild(lN);fN.appendChild(iN);
-    // Cantidad
-    const fQ=document.createElement('div');fQ.className='field';
-    const lQ=document.createElement('label');lQ.textContent='Cantidad';
-    const qR=document.createElement('div');qR.className='qty-row';
-    const bM=document.createElement('button');bM.className='qty-btn';bM.textContent='−';
-    const iQ=document.createElement('input');iQ.type='number';iQ.className='qty-input';iQ.id='qmt-'+item.id;iQ.value=item.qty;iQ.min=0;
-    const bP=document.createElement('button');bP.className='qty-btn';bP.textContent='+';
-    bM.addEventListener('click',()=>adjDB('mat',item.id,-1));
-    bP.addEventListener('click',()=>adjDB('mat',item.id,1));
-    qR.appendChild(bM);qR.appendChild(iQ);qR.appendChild(bP);
-    fQ.appendChild(lQ);fQ.appendChild(qR);
-    // Nota
-    const fT=document.createElement('div');fT.className='field';
-    const lT=document.createElement('label');lT.textContent='Nota';
-    const iT=document.createElement('input');iT.type='text';iT.value=item.nota||'';iT.placeholder='opcional';
-    fT.appendChild(lT);fT.appendChild(iT);
-    // Actions
-    const acts=document.createElement('div');acts.className='editor-actions';
-    const bSv=document.createElement('button');bSv.className='btn btn-primary';bSv.style.flex='1';bSv.textContent='Guardar';
-    const bDl=document.createElement('button');bDl.className='btn btn-danger';bDl.textContent='🗑 Eliminar';
-    bSv.addEventListener('click',async()=>{
-      await patchMat(item.id,'nombre',iN.value);
-      await patchMat(item.id,'qty',parseInt(iQ.value)||0);
-      await patchMat(item.id,'nota',iT.value);
-      toggleEdit('mt',item.id);
-    });
-    bDl.addEventListener('click',()=>delItem('mat',item.id));
-    acts.appendChild(bSv);acts.appendChild(bDl);
-    ed.appendChild(fN);ed.appendChild(fQ);ed.appendChild(fT);ed.appendChild(acts);
-    card.appendChild(ed);
-    wrap.appendChild(card);
+    card.appendChild(buildMatEditor(item));
+    grp.appendChild(card);
   });
-  list.innerHTML='';
-  list.appendChild(wrap);
+  list.appendChild(grp);
   updateStats();
-}
-
-// ── TOGGLE EDIT ──
-function toggleEdit(pfx,id){
-  const edId=`ed-${pfx}-${id}`;
-  const itemId=`${pfx}-${id}`;
-  const ed=document.getElementById(edId);
-  const it=document.getElementById(itemId);
-  const isOpen=ed.classList.contains('open');
-  document.querySelectorAll('.editor.open').forEach(e=>e.classList.remove('open'));
-  document.querySelectorAll('.item.editing').forEach(e=>e.classList.remove('editing'));
-  if(!isOpen){ed.classList.add('open');it.classList.add('editing');setTimeout(()=>it.scrollIntoView({behavior:'smooth',block:'nearest'}),100);}
-}
-
-// ── PATCH AIRE ──
-async function patchAire(id,field,value){
-  if(field==='qty')value=Math.max(0,parseInt(value)||0);
-  const item=aires.find(r=>r.id===id);if(!item)return;
-  item[field]=value;
-  try{await api(`inventario?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({[field]:value,updated_at:new Date().toISOString()})});showToast('✓');}
-  catch(e){showToast('Error',true);}
-  renderAires();
-  setTimeout(()=>{const ed=document.getElementById(`ed-ai-${id}`);const it=document.getElementById(`ai-${id}`);if(ed&&it){ed.classList.add('open');it.classList.add('editing');}},10);
-}
-
-// ── PATCH MAT ──
-async function patchMat(id,field,value){
-  if(field==='qty')value=Math.max(0,parseInt(value)||0);
-  const item=mats.find(r=>r.id===id);if(!item)return;
-  item[field]=value;
-  try{await api(`materiales?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({[field]:value,updated_at:new Date().toISOString()})});showToast('✓');}
-  catch(e){showToast('Error',true);}
-  renderMats();
-  setTimeout(()=>{const ed=document.getElementById(`ed-mt-${id}`);const it=document.getElementById(`mt-${id}`);if(ed&&it){ed.classList.add('open');it.classList.add('editing');}},10);
-}
-
-// ── ADJ QTY ──
-async function adjDB(type,id,delta){
-  if(type==='aire'){
-    const item=aires.find(r=>r.id===id);if(!item)return;
-    item.qty=Math.max(0,item.qty+delta);
-    const el=document.getElementById(`qai-${id}`);
-    const mq=document.querySelector(`#ai-${id} .item-qty`);
-    if(el)el.value=item.qty;if(mq)mq.textContent=item.qty;
-    updateStats();
-    try{await api(`inventario?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({qty:item.qty,updated_at:new Date().toISOString()})});}
-    catch(e){showToast('Error',true);}
-  }else{
-    const item=mats.find(r=>r.id===id);if(!item)return;
-    item.qty=Math.max(0,item.qty+delta);
-    const el=document.getElementById(`qmt-${id}`);
-    const mq=document.querySelector(`#mt-${id} .item-qty`);
-    if(el)el.value=item.qty;if(mq)mq.textContent=item.qty;
-    updateStats();
-    try{await api(`materiales?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({qty:item.qty,updated_at:new Date().toISOString()})});}
-    catch(e){showToast('Error',true);}
-  }
 }
 
 // ── DELETE ──
 async function delItem(type,id){
-  if(!confirm('¿Eliminar?'))return;
+  if(!confirm('¿Eliminar este elemento?'))return;
   try{
     if(type==='aire'){await api(`inventario?id=eq.${id}`,{method:'DELETE'});aires=aires.filter(r=>r.id!==id);renderAires();}
     else{await api(`materiales?id=eq.${id}`,{method:'DELETE'});mats=mats.filter(r=>r.id!==id);renderMats();}
     showToast('Eliminado');updateStats();
-  }catch(e){showToast('Error',true);}
+  }catch(e){showToast('Error al eliminar',true);}
 }
 
-// ── ADD AIRE ──
-function adj(id,delta){const el=document.getElementById(id);el.value=Math.max(0,(parseInt(el.value)||0)+delta);}
+// ── MODALS ──
 function openModal(t){document.getElementById(t==='aires'?'modalAires':'modalMat').classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function closeModalBg(e,id){if(e.target===document.getElementById(id))closeModal(id);}
@@ -666,19 +683,11 @@ async function addMat(){
   if(!nombre){alert('Escribe el nombre');return;}
   try{
     const rows=await api('materiales',{method:'POST',body:JSON.stringify({sucursal:branch,nombre,qty,nota})});
-    mats.push(rows[0]);
-    mats.sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    mats.push(rows[0]);mats.sort((a,b)=>a.nombre.localeCompare(b.nombre));
     closeModal('modalMat');
     document.getElementById('nNombre').value='';document.getElementById('nQtyM').value='0';document.getElementById('nNotaM').value='';
     renderMats();updateStats();showToast('Material agregado ✓');
   }catch(e){showToast('Error al agregar',true);}
-}
-
-// ── TOAST ──
-function showToast(msg,err=false){
-  const t=document.getElementById('toast');
-  t.textContent=msg;t.className='toast'+(err?' err':'');
-  t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);
 }
 </script>
 </body>
