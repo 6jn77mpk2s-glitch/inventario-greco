@@ -391,6 +391,7 @@ async function loadAll(){
     aires=rows.map(r=>({...r,qty:parseInt(r.qty)||0}));
     const rawMats=await api(`materiales?select=*&sucursal=eq.${branch}&order=nombre.asc`);
     mats=rawMats.map(r=>({...r,qty:parseInt(r.qty)||0,nombre:r.nombre||'(sin nombre)',nota:r.nota||''}));
+    mats.sort((a,b)=>((a.qty===0?1:0)-(b.qty===0?1:0))||a.nombre.localeCompare(b.nombre));
     renderAires();renderMats();updateStats();
   }catch(e){
     document.getElementById('listAires').innerHTML=`<div class="loading" style="color:var(--red)">Error: ${e.message}</div>`;
@@ -602,6 +603,7 @@ function renderAires(){
   const tonOrder={'1 ton':0,'1.5 ton':1,'2 ton':2,'3 ton':3};
   Object.keys(groups).forEach(m=>{
     groups[m].sort((a,b)=>
+      ((a.qty===0?1:0)-(b.qty===0?1:0)) ||
       a.modelo.localeCompare(b.modelo) ||
       ((tonOrder[a.ton]??9)-(tonOrder[b.ton]??9)) ||
       a.voltaje.localeCompare(b.voltaje)
@@ -634,6 +636,7 @@ function renderAires(){
 function renderMats(){
   const list=document.getElementById('listMat');
   if(!mats.length){list.innerHTML='<div class="empty">Sin materiales aún.<br>Agrega cables, breakers, bases, etc.</div>';updateStats();return;}
+  mats.sort((a,b)=>((a.qty===0?1:0)-(b.qty===0?1:0))||a.nombre.localeCompare(b.nombre));
   list.innerHTML='';
   const grp=document.createElement('div');grp.className='marca-group';
   const hdr=document.createElement('div');hdr.className='marca-header MATERIAL';hdr.textContent='MATERIALES';
@@ -692,7 +695,7 @@ async function addMat(){
   if(!nombre){alert('Escribe el nombre');return;}
   try{
     const rows=await api('materiales',{method:'POST',body:JSON.stringify({sucursal:branch,nombre,qty,nota})});
-    mats.push(rows[0]);mats.sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    mats.push(rows[0]);mats.sort((a,b)=>((a.qty===0?1:0)-(b.qty===0?1:0))||a.nombre.localeCompare(b.nombre));
     closeModal('modalMat');
     document.getElementById('nNombre').value='';document.getElementById('nQtyM').value='0';document.getElementById('nNotaM').value='';
     renderMats();updateStats();showToast('Material agregado ✓');
