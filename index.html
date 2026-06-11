@@ -158,6 +158,22 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--green);color:#0a1a0f;font-weight:700;font-size:13px;padding:9px 18px;border-radius:30px;opacity:0;transition:all .3s;z-index:300;white-space:nowrap;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 .toast.err{background:var(--red);color:white;}
+
+/* MOVIMIENTOS */
+.mov-month-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--accent2);padding:8px 0 4px;border-bottom:1px solid rgba(96,165,250,.3);margin-bottom:4px;}
+.mov-summary{display:flex;gap:10px;font-size:10px;font-weight:600;letter-spacing:.3px;}
+.mov-out{color:var(--red);}
+.mov-in{color:var(--green);}
+.mov-row{display:flex;align-items:center;padding:9px 12px;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:10px;}
+.mov-row.out{border-left:3px solid var(--red);}
+.mov-row.in{border-left:3px solid var(--green);}
+.mov-info{flex:1;min-width:0;}
+.mov-name{font-weight:600;font-size:14px;}
+.mov-meta{display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;}
+.mov-qty{font-family:var(--mono);font-size:20px;font-weight:500;min-width:44px;text-align:center;}
+.mov-row.out .mov-qty{color:var(--red);}
+.mov-row.in .mov-qty{color:var(--green);}
+
 </style>
 </head>
 <body>
@@ -201,7 +217,9 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <div class="branch-pill" id="branchPill" onclick="goBack()">— ↩</div>
     </div>
     <div class="stats-bar">
-      <div class="stat"><div class="stat-val" id="statUnits">—</div><div class="stat-lbl">Aires</div></div>
+      <div class="stat"><div class="stat-val" id="statUnits">—</div><div class="stat-lbl">Aires aquí</div></div>
+      <div class="stat-div"></div>
+      <div class="stat"><div class="stat-val" id="statTotal" style="color:var(--green)">—</div><div class="stat-lbl">Total 3 suc.</div></div>
       <div class="stat-div"></div>
       <div class="stat"><div class="stat-val" id="statMat">—</div><div class="stat-lbl">Materiales</div></div>
       <div class="stat-div"></div>
@@ -213,6 +231,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   <div class="tabs">
     <div class="tab active" id="tabAires" onclick="switchTab('aires')">🌬 AIRES</div>
     <div class="tab" id="tabMat" onclick="switchTab('materiales')">📦 MATERIALES</div>
+    <div class="tab" id="tabMov" onclick="switchTab('movimientos')">📊 SALIDAS</div>
   </div>
 
   <div id="secAires">
@@ -239,6 +258,14 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="loadAll()" style="margin-left:auto">↻</button>
     </div>
     <div class="list" id="listMat"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+
+  <div id="secMov" style="display:none">
+    <div class="controls">
+      <span style="font-size:11px;color:var(--muted);align-self:center">Salidas registradas por mes</span>
+      <button class="btn btn-ghost" onclick="loadMovimientos()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="list" id="listMov"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
 </div>
 
@@ -302,7 +329,7 @@ const URL_SB='https://mvenmzrfkmyfftwswxtq.supabase.co';
 const KEY_SB='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZW5tenJma215ZmZ0d3N3eHRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTYxMTUsImV4cCI6MjA5MjUzMjExNX0.Rged1qWORiY2l7wLL9rM-aRvEnwJa58BVBdYvLI4qyw';
 const PIN='18';
 
-let branch=null,aires=[],mats=[],activeFilter='ALL',filterVisible=false,activeTab='aires';
+let branch=null,aires=[],mats=[],movimientos=[],activeFilter='ALL',filterVisible=false,activeTab='aires';
 
 const SUR_DEFAULT=[
   {marca:"COLDEN",  modelo:"Colden",       voltaje:"220v",ton:"1 ton",  qty:24,nota:""},
@@ -393,6 +420,7 @@ async function loadAll(){
     mats=rawMats.map(r=>({...r,qty:parseInt(r.qty)||0,nombre:r.nombre||'(sin nombre)',nota:r.nota||''}));
     mats.sort((a,b)=>((a.qty===0?1:0)-(b.qty===0?1:0))||a.nombre.localeCompare(b.nombre));
     renderAires();renderMats();updateStats();
+    loadGlobalTotal();
   }catch(e){
     document.getElementById('listAires').innerHTML=`<div class="loading" style="color:var(--red)">Error: ${e.message}</div>`;
   }
@@ -405,13 +433,25 @@ function updateStats(){
   document.getElementById('statZero').textContent=[...aires,...mats].filter(r=>r.qty===0).length;
 }
 
+// Suma de aires de las 3 sucursales (siempre)
+async function loadGlobalTotal(){
+  try{
+    const all=await api('inventario?select=qty,modelo');
+    const total=all.filter(r=>r.modelo!=='X reparación').reduce((s,r)=>s+(parseInt(r.qty)||0),0);
+    document.getElementById('statTotal').textContent=total;
+  }catch(e){document.getElementById('statTotal').textContent='?';}
+}
+
 // ── TABS ──
 function switchTab(t){
   activeTab=t;
   document.getElementById('secAires').style.display=t==='aires'?'block':'none';
   document.getElementById('secMat').style.display=t==='materiales'?'block':'none';
+  document.getElementById('secMov').style.display=t==='movimientos'?'block':'none';
   document.getElementById('tabAires').className='tab'+(t==='aires'?' active':'');
   document.getElementById('tabMat').className='tab'+(t==='materiales'?' active':'');
+  document.getElementById('tabMov').className='tab'+(t==='movimientos'?' active':'');
+  if(t==='movimientos')loadMovimientos();
 }
 
 // ── FILTER ──
@@ -496,9 +536,10 @@ function buildAireEditor(item){
     try{
       await api(`inventario?id=eq.${item.id}`,{method:'PATCH',body:JSON.stringify(updates)});
       Object.assign(item,updates);
+      if(addVal!==0)await registrarMovimiento('aire',updates.modelo,addVal);
       showToast('Guardado ✓');
       closeAllEditors();
-      renderAires();updateStats();
+      renderAires();updateStats();loadGlobalTotal();
     }catch(e){showToast('Error al guardar',true);}
   });
   bCancel.addEventListener('click',()=>toggleEdit('ai',item.id));
@@ -536,6 +577,7 @@ function buildMatEditor(item){
     try{
       await api(`materiales?id=eq.${item.id}`,{method:'PATCH',body:JSON.stringify(updates)});
       Object.assign(item,updates);
+      if(addVal!==0)await registrarMovimiento('material',updates.nombre,addVal);
       showToast('Guardado ✓');
       closeAllEditors();
       renderMats();updateStats();
@@ -701,6 +743,68 @@ async function addMat(){
     renderMats();updateStats();showToast('Material agregado ✓');
   }catch(e){showToast('Error al agregar',true);}
 }
+
+// ── MOVIMIENTOS ──
+async function registrarMovimiento(tipo, nombre, cantidad){
+  try{
+    await api('movimientos',{method:'POST',body:JSON.stringify({
+      sucursal:branch, tipo, nombre, cantidad, fecha:new Date().toISOString()
+    })});
+  }catch(e){/* no romper el guardado si falla el registro */}
+}
+
+async function loadMovimientos(){
+  const list=document.getElementById('listMov');
+  list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    movimientos=await api(`movimientos?select=*&sucursal=eq.${branch}&order=fecha.desc`);
+    renderMovimientos();
+  }catch(e){
+    list.innerHTML=`<div class="loading" style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+function renderMovimientos(){
+  const list=document.getElementById('listMov');
+  if(!movimientos.length){list.innerHTML='<div class="empty">Sin movimientos registrados aún.<br>Las salidas y entradas aparecerán aquí.</div>';return;}
+
+  const meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  // Group by year-month
+  const groups={};
+  movimientos.forEach(m=>{
+    const d=new Date(m.fecha);
+    const key=d.getFullYear()+'-'+String(d.getMonth()).padStart(2,'0');
+    if(!groups[key])groups[key]={label:meses[d.getMonth()]+' '+d.getFullYear(),salidas:0,entradas:0,items:[]};
+    if(m.cantidad<0)groups[key].salidas+=Math.abs(m.cantidad);
+    else groups[key].entradas+=m.cantidad;
+    groups[key].items.push(m);
+  });
+  const keys=Object.keys(groups).sort().reverse();
+
+  list.innerHTML='';
+  keys.forEach(k=>{
+    const g=groups[k];
+    const grp=document.createElement('div');grp.className='marca-group';
+
+    // Month header with totals
+    const hdr=document.createElement('div');hdr.className='mov-month-header';
+    hdr.innerHTML='<span>'+g.label+'</span><span class="mov-summary"><span class="mov-out">↓ '+g.salidas+' salieron</span> <span class="mov-in">↑ '+g.entradas+' entraron</span></span>';
+    grp.appendChild(hdr);
+
+    // Each movement
+    g.items.forEach(m=>{
+      const d=new Date(m.fecha);
+      const fecha=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      const isOut=m.cantidad<0;
+      const row=document.createElement('div');
+      row.className='mov-row'+(isOut?' out':' in');
+      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span><span class="tag">'+fecha+'</span></div></div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
+      grp.appendChild(row);
+    });
+    list.appendChild(grp);
+  });
+}
+
 </script>
 </body>
 </html>
