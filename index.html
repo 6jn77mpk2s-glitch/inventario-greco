@@ -388,8 +388,9 @@ async function loadAll(){
       await api('inventario',{method:'POST',body:JSON.stringify(SUR_DEFAULT.map(r=>({...r,sucursal:'sur'})))});
       rows=await api(`inventario?select=*&sucursal=eq.${branch}&order=marca.asc,modelo.asc,voltaje.asc`);
     }
-    aires=rows;
-    mats=await api(`materiales?select=*&sucursal=eq.${branch}&order=nombre.asc`);
+    aires=rows.map(r=>({...r,qty:parseInt(r.qty)||0}));
+    const rawMats=await api(`materiales?select=*&sucursal=eq.${branch}&order=nombre.asc`);
+    mats=rawMats.map(r=>({...r,qty:parseInt(r.qty)||0,nombre:r.nombre||'(sin nombre)',nota:r.nota||''}));
     renderAires();renderMats();updateStats();
   }catch(e){
     document.getElementById('listAires').innerHTML=`<div class="loading" style="color:var(--red)">Error: ${e.message}</div>`;
@@ -598,6 +599,14 @@ function renderAires(){
   const mo={COLDEN:0,DUVENTUS:1,MIRAGE:2};
   const groups={};
   filtered.forEach(item=>{if(!groups[item.marca])groups[item.marca]=[];groups[item.marca].push(item);});
+  const tonOrder={'1 ton':0,'1.5 ton':1,'2 ton':2,'3 ton':3};
+  Object.keys(groups).forEach(m=>{
+    groups[m].sort((a,b)=>
+      a.modelo.localeCompare(b.modelo) ||
+      ((tonOrder[a.ton]??9)-(tonOrder[b.ton]??9)) ||
+      a.voltaje.localeCompare(b.voltaje)
+    );
+  });
   const marcas=Object.keys(groups).sort((a,b)=>(mo[a]??3)-(mo[b]??3));
   list.innerHTML='';
   marcas.forEach(marca=>{
