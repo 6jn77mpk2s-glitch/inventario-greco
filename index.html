@@ -65,7 +65,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 
 /* TABS */
 .tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);}
-.tab{flex:1;padding:12px;text-align:center;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:.5px;transition:all .15s;}
+.tab{flex:1;padding:11px 4px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:.3px;transition:all .15s;white-space:nowrap;}
 .tab.active{color:var(--accent2);border-bottom-color:var(--accent);}
 
 /* CONTROLS */
@@ -174,6 +174,26 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .mov-row.out .mov-qty{color:var(--red);}
 .mov-row.in .mov-qty{color:var(--green);}
 
+
+/* DESTINO MODAL */
+.dest-opts{display:flex;flex-direction:column;gap:8px;}
+.dest-opt{background:var(--card);border:2px solid var(--border);border-radius:10px;padding:13px 16px;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;}
+.dest-opt:active{transform:scale(.98);}
+.dest-opt.sel{border-color:var(--accent);background:rgba(59,130,246,.1);color:var(--accent2);}
+
+
+/* TAG TECNICO */
+.tag-tec{background:rgba(59,130,246,.15)!important;border-color:rgba(59,130,246,.3)!important;color:var(--accent2)!important;}
+/* POR TECNICO */
+.tec-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;}
+.tec-head{display:flex;justify-content:space-between;align-items:center;}
+.tec-name{font-size:16px;font-weight:700;}
+.tec-count{font-family:var(--mono);font-size:28px;font-weight:500;color:var(--muted);}
+.tec-count.has{color:var(--accent2);}
+.tec-detail{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:5px;}
+.tec-line{display:flex;justify-content:space-between;font-size:12px;color:var(--text);}
+.tec-line-qty{font-family:var(--mono);color:var(--accent2);font-weight:500;}
+
 </style>
 </head>
 <body>
@@ -232,6 +252,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="tab active" id="tabAires" onclick="switchTab('aires')">🌬 AIRES</div>
     <div class="tab" id="tabMat" onclick="switchTab('materiales')">📦 MATERIALES</div>
     <div class="tab" id="tabMov" onclick="switchTab('movimientos')">📊 SALIDAS</div>
+    <div class="tab" id="tabTec" onclick="switchTab('tecnicos')">👷 TÉCNICOS</div>
   </div>
 
   <div id="secAires">
@@ -266,6 +287,14 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="loadMovimientos()" style="margin-left:auto">↻</button>
     </div>
     <div class="list" id="listMov"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+
+  <div id="secTec" style="display:none">
+    <div class="controls">
+      <span style="font-size:11px;color:var(--muted);align-self:center">Equipos en poder de cada técnico</span>
+      <button class="btn btn-ghost" onclick="loadTecnicos()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="list" id="listTec"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
 </div>
 
@@ -318,6 +347,61 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="editor-actions">
       <button class="btn btn-primary" style="flex:1" onclick="addMat()">Guardar</button>
       <button class="btn btn-cancel" onclick="closeModal('modalMat')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DESTINO (salida/entrada) -->
+<div class="modal" id="modalDestino">
+  <div class="modal-sheet">
+    <div class="modal-title" id="destTitle">Movimiento</div>
+    <div id="destItemInfo" style="font-size:12px;color:var(--muted);margin-top:-4px"></div>
+
+    <!-- SALIDA: a donde va -->
+    <div id="destSalida" style="display:none;flex-direction:column;gap:10px">
+      <div class="field"><label>¿A dónde va?</label></div>
+      <div class="dest-opts">
+        <div class="dest-opt" data-dest="interno" onclick="pickDest(this,'interno')">👷 Técnico interno</div>
+        <div class="dest-opt" data-dest="externo" onclick="pickDest(this,'externo')">🔧 Técnico externo</div>
+        <div class="dest-opt" data-dest="cliente" onclick="pickDest(this,'cliente')">🏠 Cliente final</div>
+      </div>
+      <div id="destTecnicos" style="display:none;flex-direction:column;gap:8px">
+        <div class="field"><label>¿Cuál técnico?</label></div>
+        <div class="dest-opts">
+          <div class="dest-opt" data-tec="Alan" onclick="pickTec(this,'Alan')">Alan</div>
+          <div class="dest-opt" data-tec="Eduardo" onclick="pickTec(this,'Eduardo')">Eduardo</div>
+          <div class="dest-opt" data-tec="Henry" onclick="pickTec(this,'Henry')">Henry</div>
+          <div class="dest-opt" data-tec="David" onclick="pickTec(this,'David')">David</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ENTRADA: de donde viene -->
+    <div id="destEntrada" style="display:none;flex-direction:column;gap:10px">
+      <div class="field"><label>¿De dónde viene?</label></div>
+      <div class="dest-opts">
+        <div class="dest-opt" data-dest="proveedor" onclick="pickDest(this,'proveedor')">🚚 Proveedor</div>
+        <div class="dest-opt" data-dest="devolucion" onclick="pickDest(this,'devolucion')">↩️ Devolución</div>
+      </div>
+      <div id="destDevol" style="display:none;flex-direction:column;gap:8px">
+        <div class="field"><label>¿Quién devuelve? (opcional)</label>
+          <select id="destDevolTec">
+            <option value="">— Nadie en específico —</option>
+            <option value="Alan">Alan</option>
+            <option value="Eduardo">Eduardo</option>
+            <option value="Henry">Henry</option>
+            <option value="David">David</option>
+          </select>
+        </div>
+        <div class="field"><label>Motivo de devolución</label>
+          <input type="text" id="destMotivo" placeholder="ej. No funcionó, sobró del trabajo">
+        </div>
+      </div>
+    </div>
+
+    <div class="editor-actions">
+      <button class="btn btn-primary" style="flex:1" id="destConfirmBtn" onclick="confirmDest()">Confirmar</button>
+      <button class="btn btn-cancel" onclick="cancelDest()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -448,10 +532,13 @@ function switchTab(t){
   document.getElementById('secAires').style.display=t==='aires'?'block':'none';
   document.getElementById('secMat').style.display=t==='materiales'?'block':'none';
   document.getElementById('secMov').style.display=t==='movimientos'?'block':'none';
+  document.getElementById('secTec').style.display=t==='tecnicos'?'block':'none';
   document.getElementById('tabAires').className='tab'+(t==='aires'?' active':'');
   document.getElementById('tabMat').className='tab'+(t==='materiales'?' active':'');
   document.getElementById('tabMov').className='tab'+(t==='movimientos'?' active':'');
+  document.getElementById('tabTec').className='tab'+(t==='tecnicos'?' active':'');
   if(t==='movimientos')loadMovimientos();
+  if(t==='tecnicos')loadTecnicos();
 }
 
 // ── FILTER ──
@@ -524,7 +611,7 @@ function buildAireEditor(item){
   const bCancel=document.createElement('button');bCancel.className='btn btn-cancel';bCancel.textContent='Cancelar';
   const bDel=document.createElement('button');bDel.className='btn btn-danger editor-del';bDel.textContent='🗑';
 
-  bSave.addEventListener('click',async()=>{
+  bSave.addEventListener('click',()=>{
     const addVal=parseInt(document.getElementById('ai-add-'+item.id).value)||0;
     const newQty=Math.max(0,item.qty+addVal);
     const updates={
@@ -533,14 +620,20 @@ function buildAireEditor(item){
       qty:newQty,nota:iNota.value.trim(),
       updated_at:new Date().toISOString()
     };
-    try{
-      await api(`inventario?id=eq.${item.id}`,{method:'PATCH',body:JSON.stringify(updates)});
-      Object.assign(item,updates);
-      if(addVal!==0)await registrarMovimiento('aire',updates.modelo,addVal);
-      showToast('Guardado ✓');
-      closeAllEditors();
-      renderAires();updateStats();loadGlobalTotal();
-    }catch(e){showToast('Error al guardar',true);}
+    const commit=async()=>{
+      try{
+        await api(`inventario?id=eq.${item.id}`,{method:'PATCH',body:JSON.stringify(updates)});
+        Object.assign(item,updates);
+        showToast('Guardado ✓');
+        closeAllEditors();
+        renderAires();updateStats();loadGlobalTotal();
+      }catch(e){showToast('Error al guardar',true);}
+    };
+    if(addVal!==0){
+      openDestModal('aire',updates.modelo,addVal,commit);
+    }else{
+      commit();
+    }
   });
   bCancel.addEventListener('click',()=>toggleEdit('ai',item.id));
   bDel.addEventListener('click',()=>delItem('aire',item.id));
@@ -570,18 +663,24 @@ function buildMatEditor(item){
   const bCancel=document.createElement('button');bCancel.className='btn btn-cancel';bCancel.textContent='Cancelar';
   const bDel=document.createElement('button');bDel.className='btn btn-danger editor-del';bDel.textContent='🗑';
 
-  bSave.addEventListener('click',async()=>{
+  bSave.addEventListener('click',()=>{
     const addVal=parseInt(document.getElementById('mt-add-'+item.id).value)||0;
     const newQty=Math.max(0,item.qty+addVal);
     const updates={nombre:iNombre.value.trim(),qty:newQty,nota:iNota.value.trim(),updated_at:new Date().toISOString()};
-    try{
-      await api(`materiales?id=eq.${item.id}`,{method:'PATCH',body:JSON.stringify(updates)});
-      Object.assign(item,updates);
-      if(addVal!==0)await registrarMovimiento('material',updates.nombre,addVal);
-      showToast('Guardado ✓');
-      closeAllEditors();
-      renderMats();updateStats();
-    }catch(e){showToast('Error al guardar',true);}
+    const commit=async()=>{
+      try{
+        await api(`materiales?id=eq.${item.id}`,{method:'PATCH',body:JSON.stringify(updates)});
+        Object.assign(item,updates);
+        showToast('Guardado ✓');
+        closeAllEditors();
+        renderMats();updateStats();
+      }catch(e){showToast('Error al guardar',true);}
+    };
+    if(addVal!==0){
+      openDestModal('material',updates.nombre,addVal,commit);
+    }else{
+      commit();
+    }
   });
   bCancel.addEventListener('click',()=>toggleEdit('mt',item.id));
   bDel.addEventListener('click',()=>delItem('mat',item.id));
@@ -745,12 +844,80 @@ async function addMat(){
 }
 
 // ── MOVIMIENTOS ──
-async function registrarMovimiento(tipo, nombre, cantidad){
+async function registrarMovimiento(tipo, nombre, cantidad, destino, tecnico, motivo){
   try{
     await api('movimientos',{method:'POST',body:JSON.stringify({
-      sucursal:branch, tipo, nombre, cantidad, fecha:new Date().toISOString()
+      sucursal:branch, tipo, nombre, cantidad,
+      destino:destino||'', tecnico:tecnico||'', motivo:motivo||'',
+      fecha:new Date().toISOString()
     })});
   }catch(e){/* no romper el guardado si falla el registro */}
+}
+
+// ── DESTINO MODAL ──
+let pendingMov=null; // {tipo,nombre,cantidad,commit}
+let destChoice=null, tecChoice=null;
+
+function openDestModal(tipo,nombre,cantidad,commit){
+  pendingMov={tipo,nombre,cantidad,commit};
+  destChoice=null;tecChoice=null;
+  const isSalida=cantidad<0;
+  document.getElementById('destTitle').textContent=isSalida?'Salida — ¿a dónde va?':'Entrada — ¿de dónde viene?';
+  document.getElementById('destItemInfo').textContent=(isSalida?'Salen ':'Entran ')+Math.abs(cantidad)+' × '+nombre;
+  document.getElementById('destSalida').style.display=isSalida?'flex':'none';
+  document.getElementById('destEntrada').style.display=isSalida?'none':'flex';
+  document.getElementById('destTecnicos').style.display='none';
+  document.getElementById('destDevol').style.display='none';
+  // reset selections
+  document.querySelectorAll('.dest-opt').forEach(o=>o.classList.remove('sel'));
+  const dm=document.getElementById('destMotivo');if(dm)dm.value='';
+  const dt=document.getElementById('destDevolTec');if(dt)dt.value='';
+  document.getElementById('modalDestino').classList.add('open');
+}
+
+function pickDest(el,val){
+  destChoice=val;tecChoice=null;
+  // clear sibling selections in the same group
+  const parent=el.parentElement;
+  parent.querySelectorAll('.dest-opt').forEach(o=>o.classList.remove('sel'));
+  el.classList.add('sel');
+  // show sub-options
+  document.getElementById('destTecnicos').style.display=(val==='interno')?'flex':'none';
+  document.getElementById('destDevol').style.display=(val==='devolucion')?'flex':'none';
+}
+
+function pickTec(el,val){
+  tecChoice=val;
+  el.parentElement.querySelectorAll('.dest-opt').forEach(o=>o.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+async function confirmDest(){
+  if(!pendingMov)return;
+  const isSalida=pendingMov.cantidad<0;
+  if(!destChoice){alert(isSalida?'Selecciona a dónde va':'Selecciona de dónde viene');return;}
+  if(destChoice==='interno'&&!tecChoice){alert('Selecciona el técnico');return;}
+
+  let tecnico='',motivo='';
+  if(destChoice==='interno')tecnico=tecChoice;
+  if(destChoice==='devolucion'){
+    tecnico=document.getElementById('destDevolTec').value||'';
+    motivo=document.getElementById('destMotivo').value.trim();
+  }
+
+  const {tipo,nombre,cantidad,commit}=pendingMov;
+  document.getElementById('modalDestino').classList.remove('open');
+  // First commit the inventory change, then log the movement
+  await commit();
+  await registrarMovimiento(tipo,nombre,cantidad,destChoice,tecnico,motivo);
+  pendingMov=null;
+}
+
+function cancelDest(){
+  // Cancel = abort entire save (don't change inventory)
+  document.getElementById('modalDestino').classList.remove('open');
+  pendingMov=null;
+  showToast('Cancelado');
 }
 
 async function loadMovimientos(){
@@ -798,10 +965,92 @@ function renderMovimientos(){
       const isOut=m.cantidad<0;
       const row=document.createElement('div');
       row.className='mov-row'+(isOut?' out':' in');
-      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span><span class="tag">'+fecha+'</span></div></div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
+      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span>'+destLabel(m)+'<span class="tag">'+fecha+'</span></div>'+(m.motivo?'<div style="font-size:10px;color:var(--orange);margin-top:3px;font-style:italic">↩ '+esc(m.motivo)+'</div>':'')+'</div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
       grp.appendChild(row);
     });
     list.appendChild(grp);
+  });
+}
+
+
+// Etiqueta de destino legible
+function destLabel(m){
+  const d=m.destino||'';
+  const labels={
+    interno:'👷 '+(m.tecnico||'interno'),
+    externo:'🔧 Téc. externo',
+    cliente:'🏠 Cliente',
+    proveedor:'🚚 Proveedor',
+    devolucion:'↩️ Devolución'+(m.tecnico?' ('+m.tecnico+')':'')
+  };
+  if(!d)return '';
+  const cls=(d==='interno')?'tag-tec':'';
+  return '<span class="tag '+cls+'">'+(labels[d]||d)+'</span>';
+}
+
+// ── POR TÉCNICO ──
+async function loadTecnicos(){
+  const list=document.getElementById('listTec');
+  list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    // Todos los movimientos de TODAS las sucursales que involucran técnicos internos
+    const movs=await api('movimientos?select=*');
+    renderTecnicos(movs);
+  }catch(e){
+    list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
+  }
+}
+
+function renderTecnicos(movs){
+  const list=document.getElementById('listTec');
+  const techs=['Alan','Eduardo','Henry','David'];
+  // Saldo por técnico = salidas a ese técnico (interno) - devoluciones de ese técnico
+  const saldo={};const detalle={};
+  techs.forEach(t=>{saldo[t]=0;detalle[t]=[];});
+  movs.forEach(m=>{
+    if(m.destino==='interno' && m.tecnico && saldo[m.tecnico]!==undefined){
+      // salida hacia técnico: cantidad es negativa, le suma equipos en su poder
+      saldo[m.tecnico]+=Math.abs(m.cantidad);
+      detalle[m.tecnico].push(m);
+    }
+    if(m.destino==='devolucion' && m.tecnico && saldo[m.tecnico]!==undefined){
+      // devolución del técnico: le resta equipos en su poder
+      saldo[m.tecnico]-=Math.abs(m.cantidad);
+      detalle[m.tecnico].push(m);
+    }
+  });
+
+  list.innerHTML='';
+  const intro=document.createElement('div');
+  intro.style.cssText='font-size:11px;color:var(--muted);margin-bottom:8px;text-align:center';
+  intro.textContent='Equipos/materiales que cada técnico tiene en su poder (todas las sucursales)';
+  list.appendChild(intro);
+
+  techs.forEach(t=>{
+    const card=document.createElement('div');
+    card.className='tec-card';
+    const count=saldo[t];
+    card.innerHTML='<div class="tec-head"><div class="tec-name">👷 '+t+'</div><div class="tec-count'+(count>0?' has':'')+'">'+count+'</div></div>';
+
+    // Detalle expandible
+    if(detalle[t].length){
+      const det=document.createElement('div');det.className='tec-detail';
+      // Agrupar por nombre de equipo
+      const byName={};
+      detalle[t].forEach(m=>{
+        const sign=m.destino==='devolucion'?-Math.abs(m.cantidad):Math.abs(m.cantidad);
+        byName[m.nombre]=(byName[m.nombre]||0)+sign;
+      });
+      Object.keys(byName).forEach(n=>{
+        if(byName[n]!==0){
+          const line=document.createElement('div');line.className='tec-line';
+          line.innerHTML='<span>'+esc(n)+'</span><span class="tec-line-qty">'+byName[n]+'</span>';
+          det.appendChild(line);
+        }
+      });
+      if(det.children.length)card.appendChild(det);
+    }
+    list.appendChild(card);
   });
 }
 
