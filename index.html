@@ -194,6 +194,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .tec-line{display:flex;justify-content:space-between;font-size:12px;color:var(--text);}
 .tec-line-qty{font-family:var(--mono);color:var(--accent2);font-weight:500;}
 
+.tag-tras{background:rgba(168,85,247,.15)!important;border-color:rgba(168,85,247,.3)!important;color:#c084fc!important;}
 </style>
 </head>
 <body>
@@ -364,6 +365,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
         <div class="dest-opt" data-dest="interno" onclick="pickDest(this,'interno')">👷 Técnico interno</div>
         <div class="dest-opt" data-dest="externo" onclick="pickDest(this,'externo')">🔧 Técnico externo</div>
         <div class="dest-opt" data-dest="cliente" onclick="pickDest(this,'cliente')">🏠 Cliente final</div>
+        <div class="dest-opt" data-dest="traspaso" onclick="pickDest(this,'traspaso')">🏢 Otra sucursal</div>
       </div>
       <div id="destTecnicos" style="display:none;flex-direction:column;gap:8px">
         <div class="field"><label>¿Cuál técnico?</label></div>
@@ -373,6 +375,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
           <div class="dest-opt" data-tec="Henry" onclick="pickTec(this,'Henry')">Henry</div>
           <div class="dest-opt" data-tec="David" onclick="pickTec(this,'David')">David</div>
         </div>
+      </div>
+      <div id="destSucursales" style="display:none;flex-direction:column;gap:8px">
+        <div class="field"><label>¿A qué sucursal?</label></div>
+        <div class="dest-opts" id="sucOpts"></div>
       </div>
     </div>
 
@@ -630,7 +636,7 @@ function buildAireEditor(item){
       }catch(e){showToast('Error al guardar',true);}
     };
     if(addVal!==0){
-      openDestModal('aire',updates.modelo,addVal,commit);
+      openDestModal('aire',updates.modelo,addVal,commit,{marca:updates.marca,modelo:updates.modelo,voltaje:updates.voltaje,ton:updates.ton,nota:''});
     }else{
       commit();
     }
@@ -677,7 +683,7 @@ function buildMatEditor(item){
       }catch(e){showToast('Error al guardar',true);}
     };
     if(addVal!==0){
-      openDestModal('material',updates.nombre,addVal,commit);
+      openDestModal('material',updates.nombre,addVal,commit,{nombre:updates.nombre,nota:''});
     }else{
       commit();
     }
@@ -844,11 +850,12 @@ async function addMat(){
 }
 
 // ── MOVIMIENTOS ──
-async function registrarMovimiento(tipo, nombre, cantidad, destino, tecnico, motivo){
+async function registrarMovimiento(tipo, nombre, cantidad, destino, tecnico, motivo, sucDest){
   try{
     await api('movimientos',{method:'POST',body:JSON.stringify({
       sucursal:branch, tipo, nombre, cantidad,
       destino:destino||'', tecnico:tecnico||'', motivo:motivo||'',
+      sucursal_destino:sucDest||'',
       fecha:new Date().toISOString()
     })});
   }catch(e){/* no romper el guardado si falla el registro */}
@@ -858,9 +865,12 @@ async function registrarMovimiento(tipo, nombre, cantidad, destino, tecnico, mot
 let pendingMov=null; // {tipo,nombre,cantidad,commit}
 let destChoice=null, tecChoice=null;
 
-function openDestModal(tipo,nombre,cantidad,commit){
-  pendingMov={tipo,nombre,cantidad,commit};
-  destChoice=null;tecChoice=null;
+const BRANCHES={sur:'SUR',centro:'CENTRO',soriana:'SORIANA'};
+let sucChoice=null;
+
+function openDestModal(tipo,nombre,cantidad,commit,itemData){
+  pendingMov={tipo,nombre,cantidad,commit,itemData:itemData||{}};
+  destChoice=null;tecChoice=null;sucChoice=null;
   const isSalida=cantidad<0;
   document.getElementById('destTitle').textContent=isSalida?'Salida — ¿a dónde va?':'Entrada — ¿de dónde viene?';
   document.getElementById('destItemInfo').textContent=(isSalida?'Salen ':'Entran ')+Math.abs(cantidad)+' × '+nombre;
@@ -868,7 +878,18 @@ function openDestModal(tipo,nombre,cantidad,commit){
   document.getElementById('destEntrada').style.display=isSalida?'none':'flex';
   document.getElementById('destTecnicos').style.display='none';
   document.getElementById('destDevol').style.display='none';
-  // reset selections
+  document.getElementById('destSucursales').style.display='none';
+  // Build branch options (exclude current branch)
+  const sucOpts=document.getElementById('sucOpts');
+  sucOpts.innerHTML='';
+  Object.keys(BRANCHES).forEach(b=>{
+    if(b===branch)return;
+    const d=document.createElement('div');
+    d.className='dest-opt';d.textContent='🏢 '+BRANCHES[b];
+    d.addEventListener('click',()=>pickSuc(d,b));
+    sucOpts.appendChild(d);
+  });
+  // reset
   document.querySelectorAll('.dest-opt').forEach(o=>o.classList.remove('sel'));
   const dm=document.getElementById('destMotivo');if(dm)dm.value='';
   const dt=document.getElementById('destDevolTec');if(dt)dt.value='';
@@ -876,18 +897,23 @@ function openDestModal(tipo,nombre,cantidad,commit){
 }
 
 function pickDest(el,val){
-  destChoice=val;tecChoice=null;
-  // clear sibling selections in the same group
+  destChoice=val;tecChoice=null;sucChoice=null;
   const parent=el.parentElement;
   parent.querySelectorAll('.dest-opt').forEach(o=>o.classList.remove('sel'));
   el.classList.add('sel');
-  // show sub-options
   document.getElementById('destTecnicos').style.display=(val==='interno')?'flex':'none';
   document.getElementById('destDevol').style.display=(val==='devolucion')?'flex':'none';
+  document.getElementById('destSucursales').style.display=(val==='traspaso')?'flex':'none';
 }
 
 function pickTec(el,val){
   tecChoice=val;
+  el.parentElement.querySelectorAll('.dest-opt').forEach(o=>o.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+function pickSuc(el,val){
+  sucChoice=val;
   el.parentElement.querySelectorAll('.dest-opt').forEach(o=>o.classList.remove('sel'));
   el.classList.add('sel');
 }
@@ -897,6 +923,7 @@ async function confirmDest(){
   const isSalida=pendingMov.cantidad<0;
   if(!destChoice){alert(isSalida?'Selecciona a dónde va':'Selecciona de dónde viene');return;}
   if(destChoice==='interno'&&!tecChoice){alert('Selecciona el técnico');return;}
+  if(destChoice==='traspaso'&&!sucChoice){alert('Selecciona la sucursal destino');return;}
 
   let tecnico='',motivo='';
   if(destChoice==='interno')tecnico=tecChoice;
@@ -905,12 +932,57 @@ async function confirmDest(){
     motivo=document.getElementById('destMotivo').value.trim();
   }
 
-  const {tipo,nombre,cantidad,commit}=pendingMov;
+  const {tipo,nombre,cantidad,commit,itemData}=pendingMov;
   document.getElementById('modalDestino').classList.remove('open');
-  // First commit the inventory change, then log the movement
+
+  // 1. Commit local inventory change (the descuento)
   await commit();
-  await registrarMovimiento(tipo,nombre,cantidad,destChoice,tecnico,motivo);
+  // 2. Log movement in origin branch
+  await registrarMovimiento(tipo,nombre,cantidad,destChoice,tecnico,motivo,destChoice==='traspaso'?sucChoice:'');
+
+  // 3. If it's a transfer, add to destination branch + log entry there
+  if(destChoice==='traspaso'){
+    await ejecutarTraspaso(tipo,nombre,Math.abs(cantidad),itemData,sucChoice);
+  }
   pendingMov=null;
+}
+
+// Mueve stock a la sucursal destino (crea si no existe) y registra la entrada allá
+async function ejecutarTraspaso(tipo,nombre,cantidad,itemData,sucDest){
+  try{
+    if(tipo==='aire'){
+      // Buscar mismo modelo+voltaje+ton en destino
+      const q=`inventario?select=*&sucursal=eq.${sucDest}`+
+        `&marca=eq.${encodeURIComponent(itemData.marca)}`+
+        `&modelo=eq.${encodeURIComponent(itemData.modelo)}`+
+        `&voltaje=eq.${encodeURIComponent(itemData.voltaje)}`+
+        `&ton=eq.${encodeURIComponent(itemData.ton)}`;
+      const found=await api(q);
+      if(found.length){
+        const ex=found[0];
+        await api(`inventario?id=eq.${ex.id}`,{method:'PATCH',body:JSON.stringify({qty:(parseInt(ex.qty)||0)+cantidad,updated_at:new Date().toISOString()})});
+      }else{
+        await api('inventario',{method:'POST',body:JSON.stringify({sucursal:sucDest,marca:itemData.marca,modelo:itemData.modelo,voltaje:itemData.voltaje,ton:itemData.ton,qty:cantidad,nota:''})});
+      }
+    }else{
+      const q=`materiales?select=*&sucursal=eq.${sucDest}&nombre=eq.${encodeURIComponent(itemData.nombre)}`;
+      const found=await api(q);
+      if(found.length){
+        const ex=found[0];
+        await api(`materiales?id=eq.${ex.id}`,{method:'PATCH',body:JSON.stringify({qty:(parseInt(ex.qty)||0)+cantidad,updated_at:new Date().toISOString()})});
+      }else{
+        await api('materiales',{method:'POST',body:JSON.stringify({sucursal:sucDest,nombre:itemData.nombre,qty:cantidad,nota:''})});
+      }
+    }
+    // Registrar entrada en la sucursal destino (positiva, origen traspaso)
+    await api('movimientos',{method:'POST',body:JSON.stringify({
+      sucursal:sucDest,tipo,nombre,cantidad:cantidad,
+      destino:'traspaso_in',tecnico:'',motivo:'',sucursal_destino:branch,
+      fecha:new Date().toISOString()
+    })});
+    showToast('Traspasado a '+BRANCHES[sucDest]+' ✓');
+    loadGlobalTotal();
+  }catch(e){showToast('Error en traspaso',true);}
 }
 
 function cancelDest(){
@@ -976,15 +1048,18 @@ function renderMovimientos(){
 // Etiqueta de destino legible
 function destLabel(m){
   const d=m.destino||'';
+  const BR={sur:'SUR',centro:'CENTRO',soriana:'SORIANA'};
   const labels={
     interno:'👷 '+(m.tecnico||'interno'),
     externo:'🔧 Téc. externo',
     cliente:'🏠 Cliente',
     proveedor:'🚚 Proveedor',
-    devolucion:'↩️ Devolución'+(m.tecnico?' ('+m.tecnico+')':'')
+    devolucion:'↩️ Devolución'+(m.tecnico?' ('+m.tecnico+')':''),
+    traspaso:'🏢 → '+(BR[m.sucursal_destino]||'otra suc.'),
+    traspaso_in:'🏢 ← '+(BR[m.sucursal_destino]||'otra suc.')
   };
   if(!d)return '';
-  const cls=(d==='interno')?'tag-tec':'';
+  const cls=(d==='interno')?'tag-tec':(d==='traspaso'||d==='traspaso_in')?'tag-tras':'';
   return '<span class="tag '+cls+'">'+(labels[d]||d)+'</span>';
 }
 
