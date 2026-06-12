@@ -916,12 +916,13 @@ async function addMat(){
 }
 
 // ── MOVIMIENTOS ──
-async function registrarMovimiento(tipo, nombre, cantidad, destino, tecnico, motivo, sucDest){
+async function registrarMovimiento(tipo, nombre, cantidad, destino, tecnico, motivo, sucDest, voltaje, ton){
   try{
     await api('movimientos',{method:'POST',body:JSON.stringify({
       sucursal:branch, tipo, nombre, cantidad,
       destino:destino||'', tecnico:tecnico||'', motivo:motivo||'',
       sucursal_destino:sucDest||'', usuario:currentUser||'',
+      voltaje:voltaje||'', ton:ton||'',
       fecha:new Date().toISOString()
     })});
   }catch(e){/* no romper el guardado si falla el registro */}
@@ -1004,7 +1005,7 @@ async function confirmDest(){
   // 1. Commit local inventory change (the descuento)
   await commit();
   // 2. Log movement in origin branch
-  await registrarMovimiento(tipo,nombre,cantidad,destChoice,tecnico,motivo,destChoice==='traspaso'?sucChoice:'');
+  await registrarMovimiento(tipo,nombre,cantidad,destChoice,tecnico,motivo,destChoice==='traspaso'?sucChoice:'',itemData.voltaje,itemData.ton);
 
   // 3. If it's a transfer, add to destination branch + log entry there
   if(destChoice==='traspaso'){
@@ -1044,6 +1045,7 @@ async function ejecutarTraspaso(tipo,nombre,cantidad,itemData,sucDest){
     await api('movimientos',{method:'POST',body:JSON.stringify({
       sucursal:sucDest,tipo,nombre,cantidad:cantidad,
       destino:'traspaso_in',tecnico:'',motivo:'',sucursal_destino:branch,usuario:currentUser||'',
+      voltaje:itemData.voltaje||'',ton:itemData.ton||'',
       fecha:new Date().toISOString()
     })});
     showToast('Traspasado a '+BRANCHES[sucDest]+' ✓');
@@ -1106,7 +1108,8 @@ function renderMovimientos(){
       row.className='mov-row'+(isOut?' out':' in');
       const mio=(m.usuario===currentUser);
       const undoBtn=mio?'<button class="undo-btn" onclick="deshacerMovimiento('+m.id+')">↶ Deshacer</button>':'';
-      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span>'+destLabel(m)+userTag+'<span class="tag">'+fecha+'</span></div>'+(m.motivo?'<div style="font-size:10px;color:var(--orange);margin-top:3px;font-style:italic">↩ '+esc(m.motivo)+'</div>':'')+undoBtn+'</div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
+      const espTag=(m.tipo==='aire'&&(m.voltaje||m.ton))?'<span class="tag">'+esc((m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||''))+'</span>':'';
+      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span>'+espTag+destLabel(m)+userTag+'<span class="tag">'+fecha+'</span></div>'+(m.motivo?'<div style="font-size:10px;color:var(--orange);margin-top:3px;font-style:italic">↩ '+esc(m.motivo)+'</div>':'')+undoBtn+'</div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
       grp.appendChild(row);
     });
     list.appendChild(grp);
@@ -1183,7 +1186,8 @@ function renderTecnicos(movs){
       const byName={};
       detalle[t].forEach(m=>{
         const sign=m.destino==='devolucion'?-Math.abs(m.cantidad):Math.abs(m.cantidad);
-        byName[m.nombre]=(byName[m.nombre]||0)+sign;
+        const key=m.nombre+(m.tipo==='aire'&&(m.voltaje||m.ton)?' ('+(m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||'')+')':'');
+        byName[key]=(byName[key]||0)+sign;
       });
       Object.keys(byName).forEach(n=>{
         if(byName[n]!==0){
@@ -1220,11 +1224,11 @@ async function exportarTodo(){
     mat.forEach(r=>{csv+=[BR[r.sucursal]||r.sucursal,r.nombre,r.qty,r.nota||''].map(csvCell).join(',')+'\n';});
 
     csv+='\nMOVIMIENTOS\n';
-    csv+='Fecha,Sucursal,Tipo,Nombre,Cantidad,Destino,Tecnico,Sucursal destino,Motivo,Usuario\n';
+    csv+='Fecha,Sucursal,Tipo,Nombre,Voltaje,Tonelaje,Cantidad,Destino,Tecnico,Sucursal destino,Motivo,Usuario\n';
     mov.forEach(r=>{
       const f=new Date(r.fecha);
       const fecha=f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0')+' '+String(f.getHours()).padStart(2,'0')+':'+String(f.getMinutes()).padStart(2,'0');
-      csv+=[fecha,BR[r.sucursal]||r.sucursal,r.tipo,r.nombre,r.cantidad,r.destino||'',r.tecnico||'',BR[r.sucursal_destino]||r.sucursal_destino||'',r.motivo||'',r.usuario||''].map(csvCell).join(',')+'\n';
+      csv+=[fecha,BR[r.sucursal]||r.sucursal,r.tipo,r.nombre,r.voltaje||'',r.ton||'',r.cantidad,r.destino||'',r.tecnico||'',BR[r.sucursal_destino]||r.sucursal_destino||'',r.motivo||'',r.usuario||''].map(csvCell).join(',')+'\n';
     });
 
     const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
@@ -1272,8 +1276,10 @@ async function revertirStock(suc,tipo,nombre,cantidad,m){
   const tabla=tipo==='aire'?'inventario':'materiales';
   let q;
   if(tipo==='aire'){
-    // necesitamos identificar el equipo: lo buscamos por nombre(modelo) en esa sucursal
+    // Identificar el equipo exacto por modelo + voltaje + ton (si están guardados)
     q=`${tabla}?select=*&sucursal=eq.${suc}&modelo=eq.${encodeURIComponent(nombre)}`;
+    if(m&&m.voltaje)q+=`&voltaje=eq.${encodeURIComponent(m.voltaje)}`;
+    if(m&&m.ton)q+=`&ton=eq.${encodeURIComponent(m.ton)}`;
   }else{
     q=`${tabla}?select=*&sucursal=eq.${suc}&nombre=eq.${encodeURIComponent(nombre)}`;
   }
