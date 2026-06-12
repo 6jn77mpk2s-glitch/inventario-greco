@@ -209,6 +209,12 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .undo-btn{margin-top:6px;background:transparent;border:1px solid rgba(239,68,68,.3);color:var(--red);font-family:var(--sans);font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;}
 .undo-btn:active{background:rgba(239,68,68,.1);}
 
+
+.tarifa-cell{width:54px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--accent2);background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:6px;padding:4px 0;cursor:pointer;display:inline-block;}
+.tarifa-cell:active{background:rgba(59,130,246,.25);}
+.concepto-row select{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 8px;border-radius:7px;-webkit-appearance:none;}
+.concepto-row input{font-family:var(--mono);font-size:13px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px;border-radius:7px;text-align:center;}
+
 </style>
 </head>
 <body>
@@ -221,6 +227,34 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <input class="pin-input" type="password" id="pinInput" maxlength="6" inputmode="numeric" placeholder="••••" onkeydown="if(event.key==='Enter')checkPin()">
     <button class="pin-btn" onclick="checkPin()">Entrar</button>
     <span class="pin-err" id="pinErr"></span>
+  </div>
+</div>
+
+<!-- MODULE SELECTOR -->
+<div class="branch-screen" id="moduleScreen">
+  <div class="pin-logo">Climas <span>Greco</span></div>
+  <div class="branch-title">¿A dónde quieres entrar?</div>
+  <div class="branch-cards">
+    <div class="branch-card sur" onclick="enterInventarios()">
+      <div><div class="branch-name">📦 Inventarios</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Aires, materiales y movimientos</div></div>
+      <div class="branch-arrow">›</div>
+    </div>
+    <div class="branch-card centro" onclick="enterTrabajosPin()">
+      <div><div class="branch-name">🔧 Trabajos</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Control de trabajos y pagos</div></div>
+      <div class="branch-arrow">›</div>
+    </div>
+  </div>
+</div>
+
+<!-- TRABAJOS PIN -->
+<div class="pin-screen" id="trabajosPinScreen" style="display:none">
+  <div class="pin-logo">Climas <span>Greco</span></div>
+  <div class="pin-sub">🔧 Trabajos — código de acceso</div>
+  <div class="pin-wrap">
+    <input class="pin-input" type="password" id="trabajosPinInput" maxlength="6" inputmode="numeric" placeholder="••••" onkeydown="if(event.key==='Enter')checkTrabajosPin()">
+    <button class="pin-btn" onclick="checkTrabajosPin()">Entrar</button>
+    <span class="pin-err" id="trabajosPinErr"></span>
+    <button class="btn btn-cancel" style="margin-top:4px" onclick="backToModule()">← Regresar</button>
   </div>
 </div>
 
@@ -337,6 +371,123 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="loadTecnicos()" style="margin-left:auto">↻</button>
     </div>
     <div class="list" id="listTec"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+</div>
+
+<!-- ════════ TRABAJOS APP ════════ -->
+<div id="trabajosApp" style="display:none">
+  <header>
+    <div class="header-top">
+      <div class="logo">Climas <span>Greco</span> · 🔧</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="user-pill" id="trabUserPill">👤 —</div>
+        <div class="branch-pill sur" onclick="exitTrabajos()" style="cursor:pointer">SALIR ↩</div>
+      </div>
+    </div>
+    <!-- Week navigator -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:8px">
+      <button class="btn btn-ghost" onclick="cambiarSemana(-1)">←</button>
+      <div style="text-align:center;flex:1">
+        <div id="weekLabel" style="font-size:13px;font-weight:700;color:var(--text)">Semana</div>
+        <div id="weekRange" style="font-size:10px;color:var(--muted)"></div>
+      </div>
+      <button class="btn btn-ghost" onclick="cambiarSemana(1)">→</button>
+    </div>
+    <!-- Week summary stats -->
+    <div class="stats-bar" style="margin-top:12px">
+      <div class="stat"><div class="stat-val" id="tCobrado" style="color:var(--green)">—</div><div class="stat-lbl">Cobrado</div></div>
+      <div class="stat-div"></div>
+      <div class="stat"><div class="stat-val" id="tPagos" style="color:var(--orange)">—</div><div class="stat-lbl">Pagos</div></div>
+      <div class="stat-div"></div>
+      <div class="stat"><div class="stat-val" id="tUtilidad" style="color:var(--accent2)">—</div><div class="stat-lbl">Utilidad</div></div>
+      <div class="stat-div"></div>
+      <div class="stat"><div class="stat-val" id="tTrabajos">—</div><div class="stat-lbl">Trabajos</div></div>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" id="tabSemana" onclick="switchTrabTab('semana')">📅 SEMANA</div>
+    <div class="tab" id="tabCorte" onclick="switchTrabTab('corte')">💰 CORTE</div>
+    <div class="tab" id="tabTarifas" onclick="switchTrabTab('tarifas')">🏷️ TARIFAS</div>
+  </div>
+
+  <!-- SEMANA: trabajos por día -->
+  <div id="secSemana">
+    <div class="controls">
+      <button class="btn btn-primary" onclick="openTrabajoModal()">+ Nuevo trabajo</button>
+      <button class="btn btn-success" onclick="exportarTrabajos()">⬇ Exportar</button>
+      <button class="btn btn-ghost" onclick="loadTrabajos()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="list" id="listSemana"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+
+  <!-- CORTE -->
+  <div id="secCorte" style="display:none">
+    <div class="controls">
+      <span style="font-size:11px;color:var(--muted);align-self:center">Resumen de la semana</span>
+      <button class="btn btn-ghost" onclick="renderCorte()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="list" id="listCorte"></div>
+  </div>
+
+  <!-- TARIFAS -->
+  <div id="secTarifas" style="display:none">
+    <div class="controls">
+      <span style="font-size:11px;color:var(--muted);align-self:center">Toca un monto para editarlo</span>
+      <button class="btn btn-ghost" onclick="loadTarifas()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="list" id="listTarifas"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+</div>
+
+<!-- MODAL NUEVO TRABAJO -->
+<div class="modal" id="modalTrabajo" onclick="closeTrabModalBg(event)">
+  <div class="modal-sheet">
+    <div class="modal-title" id="trabModalTitle">➕ Nuevo trabajo</div>
+
+    <div class="field-row">
+      <div class="field"><label>Fecha</label>
+        <input type="date" id="trabFecha">
+      </div>
+      <div class="field"><label>Cuadrilla (técnico)</label>
+        <select id="trabCuadrilla"><option>Alan</option><option>Eduardo</option><option>Henry</option><option>David</option></select>
+      </div>
+    </div>
+
+    <div class="field"><label>Ayudante</label>
+      <div style="display:flex;gap:6px">
+        <select id="trabAyudante" style="flex:1"></select>
+        <button class="btn btn-ghost" onclick="addAyudantePrompt()" style="white-space:nowrap">+ Nuevo</button>
+      </div>
+    </div>
+
+    <!-- Conceptos -->
+    <div class="field"><label>Conceptos del trabajo</label></div>
+    <div id="conceptosList" style="display:flex;flex-direction:column;gap:6px"></div>
+    <button class="btn btn-ghost" onclick="addConceptoRow()" style="align-self:flex-start">+ Agregar concepto</button>
+
+    <!-- Pagos calculados -->
+    <div class="qty-block" style="margin-top:4px">
+      <div class="qty-actual-row"><span class="qty-actual-lbl">Pago al técnico</span><span class="qty-actual-val" id="calcTecnico" style="color:var(--green)">$0</span></div>
+      <div class="qty-actual-row"><span class="qty-actual-lbl">Pago al ayudante</span><span class="qty-actual-val" id="calcAyudante" style="color:var(--green)">$0</span></div>
+    </div>
+
+    <!-- Cobro al cliente -->
+    <div class="field-row">
+      <div class="field"><label>Cobrado al cliente</label>
+        <input type="number" id="trabCobrado" placeholder="0" inputmode="decimal">
+      </div>
+      <div class="field"><label>Forma de pago</label>
+        <select id="trabFormaPago"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="tarjeta">Tarjeta</option><option value="local">Dejó en local</option></select>
+      </div>
+    </div>
+
+    <div class="field"><label>Nota (opcional)</label><input type="text" id="trabNota" placeholder="cliente, dirección, etc."></div>
+
+    <div class="editor-actions">
+      <button class="btn btn-primary" style="flex:1" onclick="guardarTrabajo()">Guardar trabajo</button>
+      <button class="btn btn-cancel" onclick="closeTrabModal()">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -511,15 +662,47 @@ function showToast(msg,err=false){
 }
 
 // ── PIN ──
+const PIN_TRABAJOS='5122';
+let currentModule=null; // 'inventarios' | 'trabajos'
+
 function checkPin(){
   const v=document.getElementById('pinInput').value;
   if(v===PIN){
     document.getElementById('pinScreen').style.display='none';
-    document.getElementById('userScreen').classList.add('show');
+    document.getElementById('moduleScreen').classList.add('show');
   }else{
     const i=document.getElementById('pinInput');i.classList.add('error');
     document.getElementById('pinErr').textContent='Código incorrecto';
     setTimeout(()=>{i.classList.remove('error');i.value='';document.getElementById('pinErr').textContent='';},1200);
+  }
+}
+
+// ── MODULE SELECTOR ──
+function enterInventarios(){
+  currentModule='inventarios';
+  document.getElementById('moduleScreen').classList.remove('show');
+  document.getElementById('userScreen').classList.add('show');
+}
+function enterTrabajosPin(){
+  document.getElementById('moduleScreen').classList.remove('show');
+  document.getElementById('trabajosPinScreen').style.display='flex';
+  setTimeout(()=>document.getElementById('trabajosPinInput').focus(),100);
+}
+function backToModule(){
+  document.getElementById('trabajosPinScreen').style.display='none';
+  document.getElementById('trabajosPinInput').value='';
+  document.getElementById('moduleScreen').classList.add('show');
+}
+function checkTrabajosPin(){
+  const v=document.getElementById('trabajosPinInput').value;
+  if(v===PIN_TRABAJOS){
+    currentModule='trabajos';
+    document.getElementById('trabajosPinScreen').style.display='none';
+    document.getElementById('userScreen').classList.add('show');
+  }else{
+    const i=document.getElementById('trabajosPinInput');i.classList.add('error');
+    document.getElementById('trabajosPinErr').textContent='Código incorrecto';
+    setTimeout(()=>{i.classList.remove('error');i.value='';document.getElementById('trabajosPinErr').textContent='';},1200);
   }
 }
 
@@ -528,7 +711,12 @@ let currentUser=null;
 function selectUser(u){
   currentUser=u;
   document.getElementById('userScreen').classList.remove('show');
-  document.getElementById('branchScreen').classList.add('show');
+  if(currentModule==='trabajos'){
+    document.getElementById('trabajosApp').style.display='block';
+    initTrabajos();
+  }else{
+    document.getElementById('branchScreen').classList.add('show');
+  }
 }
 function changeUser(){
   document.getElementById('app').style.display='none';
@@ -1289,6 +1477,436 @@ async function revertirStock(suc,tipo,nombre,cantidad,m){
     const nuevo=Math.max(0,(parseInt(ex.qty)||0)-cantidad);
     await api(`${tabla}?id=eq.${ex.id}`,{method:'PATCH',body:JSON.stringify({qty:nuevo,updated_at:new Date().toISOString()})});
   }
+}
+
+
+// ════════════════ TRABAJOS MODULE ════════════════
+const CONCEPTOS=[
+  'Instalación 1 ton','Instalación 1.5 ton','Instalación 2 ton','Instalación 3 ton',
+  'Desinstalación','Instalación de base','Centro de carga 2 espacios','Centro de carga 4 espacios',
+  'Servicio 1 ton','Servicio 1.5 ton','Servicio 2 ton'
+];
+
+// Tarifas por defecto (se cargan a Supabase la 1a vez)
+const TARIFAS_DEFAULT=[
+  // concepto, alan_eduardo, henry_david, ayudante
+  ['Instalación 1 ton',500,400,300],
+  ['Instalación 1.5 ton',500,400,300],
+  ['Instalación 2 ton',600,500,400],
+  ['Instalación 3 ton',700,600,500],
+  ['Desinstalación',200,200,100],
+  ['Instalación de base',100,100,100],
+  ['Centro de carga 2 espacios',150,100,100],
+  ['Centro de carga 4 espacios',200,100,100],
+  ['Servicio 1 ton',200,200,100],
+  ['Servicio 1.5 ton',250,250,150],
+  ['Servicio 2 ton',300,300,200],
+];
+
+let tarifas={};       // {concepto: {alan_eduardo, henry_david, ayudante}}
+let trabajos=[];      // trabajos de la semana actual
+let ayudantes=[];     // nombres de ayudantes conocidos
+let semanaOffset=0;   // 0 = semana actual, -1 = anterior, etc.
+let trabTab='semana';
+
+function grupoDe(cuadrilla){
+  return (cuadrilla==='Alan'||cuadrilla==='Eduardo')?'alan_eduardo':'henry_david';
+}
+
+// ── Semana helpers (lunes a sábado) ──
+function lunesDeSemana(offset){
+  const d=new Date();
+  d.setHours(0,0,0,0);
+  const day=(d.getDay()+6)%7; // 0=lunes
+  d.setDate(d.getDate()-day+offset*7);
+  return d;
+}
+function fmtFecha(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function semanaId(offset){
+  const l=lunesDeSemana(offset);
+  // ISO week-ish id basado en lunes
+  return fmtFecha(l);
+}
+function nombreMes(m){return ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][m];}
+
+// ── INIT ──
+async function initTrabajos(){
+  document.getElementById('trabUserPill').textContent='👤 '+currentUser;
+  await loadTarifas(true); // silencioso, solo carga datos
+  await loadTrabajos();
+}
+
+function exitTrabajos(){
+  document.getElementById('trabajosApp').style.display='none';
+  document.getElementById('moduleScreen').classList.add('show');
+  trabajos=[];semanaOffset=0;
+}
+
+// ── TARIFAS ──
+async function loadTarifas(silent){
+  try{
+    let rows=await api('tarifas?select=*');
+    if(rows.length===0){
+      // Sembrar
+      const seed=[];
+      TARIFAS_DEFAULT.forEach(([con,ae,hd,ay])=>{
+        seed.push({concepto:con,grupo:'alan_eduardo',monto:ae});
+        seed.push({concepto:con,grupo:'henry_david',monto:hd});
+        seed.push({concepto:con,grupo:'ayudante',monto:ay});
+      });
+      await api('tarifas',{method:'POST',body:JSON.stringify(seed)});
+      rows=await api('tarifas?select=*');
+    }
+    tarifas={};
+    rows.forEach(r=>{
+      if(!tarifas[r.concepto])tarifas[r.concepto]={};
+      tarifas[r.concepto][r.grupo]={monto:parseFloat(r.monto)||0,id:r.id};
+    });
+    if(!silent)renderTarifas();
+  }catch(e){if(!silent)document.getElementById('listTarifas').innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';}
+}
+
+function renderTarifas(){
+  const list=document.getElementById('listTarifas');
+  list.innerHTML='';
+  const grp=document.createElement('div');grp.className='marca-group';
+  const hdr=document.createElement('div');hdr.className='marca-header';hdr.style.color='var(--accent2)';
+  hdr.innerHTML='<div style="display:flex;justify-content:space-between"><span>CONCEPTO</span><span style="display:flex;gap:14px"><span>Alan/Edu</span><span>Henry/David</span><span>Ayud.</span></span></div>';
+  grp.appendChild(hdr);
+  CONCEPTOS.forEach(con=>{
+    if(!tarifas[con])return;
+    const row=document.createElement('div');row.className='item';
+    row.style.padding='10px 12px';
+    row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+      '<div style="font-size:12px;font-weight:600;flex:1">'+con+'</div>'+
+      '<div style="display:flex;gap:8px">'+
+      tarifaCell(con,'alan_eduardo')+tarifaCell(con,'henry_david')+tarifaCell(con,'ayudante')+
+      '</div></div>';
+    grp.appendChild(row);
+  });
+  list.appendChild(grp);
+}
+function tarifaCell(con,grupo){
+  const t=tarifas[con][grupo];
+  if(!t)return '<span style="width:54px"></span>';
+  return '<span class="tarifa-cell" onclick="editTarifa(\''+con+'\',\''+grupo+'\','+t.id+','+t.monto+')">$'+t.monto+'</span>';
+}
+async function editTarifa(con,grupo,id,actual){
+  const nuevo=prompt('Tarifa para "'+con+'" ('+grupo.replace('_','/')+'):',actual);
+  if(nuevo===null)return;
+  const val=parseFloat(nuevo);
+  if(isNaN(val)){alert('Número inválido');return;}
+  try{
+    await api('tarifas?id=eq.'+id,{method:'PATCH',body:JSON.stringify({monto:val})});
+    tarifas[con][grupo].monto=val;
+    renderTarifas();showToast('Tarifa actualizada ✓');
+  }catch(e){showToast('Error',true);}
+}
+
+// ── TRABAJOS ──
+async function loadTrabajos(){
+  const sid=semanaId(semanaOffset);
+  updateWeekHeader();
+  document.getElementById('listSemana').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    trabajos=await api('trabajos?select=*&semana=eq.'+sid+'&order=fecha.asc,id.asc');
+    // recopilar ayudantes vistos
+    trabajos.forEach(t=>{if(t.ayudante&&!ayudantes.includes(t.ayudante))ayudantes.push(t.ayudante);});
+    renderSemana();renderResumenSemana();
+  }catch(e){
+    document.getElementById('listSemana').innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
+  }
+}
+
+function cambiarSemana(delta){semanaOffset+=delta;loadTrabajos();}
+
+function updateWeekHeader(){
+  const l=lunesDeSemana(semanaOffset);
+  const sab=new Date(l);sab.setDate(l.getDate()+5);
+  document.getElementById('weekLabel').textContent=semanaOffset===0?'Esta semana':(semanaOffset===-1?'Semana pasada':'Semana');
+  document.getElementById('weekRange').textContent=l.getDate()+' '+nombreMes(l.getMonth())+' — '+sab.getDate()+' '+nombreMes(sab.getMonth())+' '+sab.getFullYear();
+}
+
+function renderResumenSemana(){
+  let cobrado=0,pagos=0;
+  trabajos.forEach(t=>{
+    cobrado+=parseFloat(t.cobrado)||0;
+    pagos+=(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0);
+  });
+  document.getElementById('tCobrado').textContent='$'+cobrado.toLocaleString();
+  document.getElementById('tPagos').textContent='$'+pagos.toLocaleString();
+  document.getElementById('tUtilidad').textContent='$'+(cobrado-pagos).toLocaleString();
+  document.getElementById('tTrabajos').textContent=trabajos.length;
+}
+
+function renderSemana(){
+  const list=document.getElementById('listSemana');
+  if(!trabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.<br>Toca "+ Nuevo trabajo" para empezar.</div>';return;}
+  // Agrupar por fecha
+  const dias={};
+  trabajos.forEach(t=>{if(!dias[t.fecha])dias[t.fecha]=[];dias[t.fecha].push(t);});
+  const fechas=Object.keys(dias).sort();
+  const diasSem=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  list.innerHTML='';
+  fechas.forEach(f=>{
+    const d=new Date(f+'T12:00:00');
+    const grp=document.createElement('div');grp.className='marca-group';
+    let totDia=dias[f].reduce((s,t)=>s+(parseFloat(t.cobrado)||0),0);
+    const hdr=document.createElement('div');hdr.className='marca-header';hdr.style.color='var(--accent2)';
+    hdr.innerHTML='<div style="display:flex;justify-content:space-between"><span>'+diasSem[d.getDay()]+' '+d.getDate()+'</span><span style="color:var(--green)">$'+totDia.toLocaleString()+'</span></div>';
+    grp.appendChild(hdr);
+    dias[f].forEach(t=>grp.appendChild(buildTrabajoCard(t)));
+    list.appendChild(grp);
+  });
+}
+
+function buildTrabajoCard(t){
+  const card=document.createElement('div');card.className='item';
+  const conceptos=Array.isArray(t.conceptos)?t.conceptos:(JSON.parse(t.conceptos||'[]'));
+  const concSummary=conceptos.map(x=>x.concepto+(x.cantidad>1?' x'+x.cantidad:'')).join(', ');
+  const fp={efectivo:'💵 Efectivo',transferencia:'🏦 Transfer',tarjeta:'💳 Tarjeta',local:'🏪 Local'}[t.forma_pago]||t.forma_pago;
+  const main=document.createElement('div');main.className='item-main';
+  main.innerHTML='<div class="item-info">'+
+    '<div class="item-model">👷 '+esc(t.cuadrilla)+(t.ayudante?' + '+esc(t.ayudante):'')+'</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+esc(concSummary||'sin conceptos')+'</div>'+
+    '<div class="item-meta"><span class="tag">'+fp+'</span><span class="tag" style="color:var(--green)">Cobrado $'+(parseFloat(t.cobrado)||0).toLocaleString()+'</span></div>'+
+    (t.nota?'<div style="font-size:10px;color:var(--muted);margin-top:3px;font-style:italic">'+esc(t.nota)+'</div>':'')+
+    '</div>'+
+    '<div style="text-align:right"><div style="font-size:10px;color:var(--orange)">Téc $'+(parseFloat(t.pago_tecnico)||0)+'</div><div style="font-size:10px;color:var(--orange)">Ayu $'+(parseFloat(t.pago_ayudante)||0)+'</div></div>';
+  main.addEventListener('click',()=>toggleTrabajoActions(t.id));
+  card.appendChild(main);
+  // acciones (solo creador puede borrar)
+  const act=document.createElement('div');act.className='editor';act.id='trab-act-'+t.id;
+  const mio=(t.usuario===currentUser);
+  act.innerHTML='';
+  const acts=document.createElement('div');acts.className='editor-actions';
+  if(mio){
+    const bDel=document.createElement('button');bDel.className='btn btn-danger';bDel.style.flex='1';bDel.textContent='🗑 Eliminar trabajo';
+    bDel.addEventListener('click',()=>delTrabajo(t.id));
+    acts.appendChild(bDel);
+  }else{
+    const info=document.createElement('div');info.style.cssText='font-size:11px;color:var(--muted);text-align:center;flex:1';
+    info.textContent='Registrado por '+(t.usuario||'otro')+' — solo esa persona puede eliminarlo';
+    acts.appendChild(info);
+  }
+  act.appendChild(acts);
+  card.appendChild(act);
+  return card;
+}
+function toggleTrabajoActions(id){
+  const el=document.getElementById('trab-act-'+id);
+  const open=el.classList.contains('open');
+  document.querySelectorAll('#listSemana .editor.open').forEach(e=>e.classList.remove('open'));
+  if(!open)el.classList.add('open');
+}
+
+async function delTrabajo(id){
+  const t=trabajos.find(x=>x.id===id);
+  if(t&&t.usuario!==currentUser){alert('Solo '+(t.usuario||'quien lo creó')+' puede eliminarlo');return;}
+  if(!confirm('¿Eliminar este trabajo?'))return;
+  try{
+    await api('trabajos?id=eq.'+id,{method:'DELETE'});
+    trabajos=trabajos.filter(x=>x.id!==id);
+    renderSemana();renderResumenSemana();showToast('Trabajo eliminado');
+  }catch(e){showToast('Error al eliminar',true);}
+}
+
+// ── MODAL NUEVO TRABAJO ──
+function openTrabajoModal(){
+  document.getElementById('trabFecha').value=fmtFecha(new Date());
+  document.getElementById('trabCuadrilla').value='Alan';
+  document.getElementById('trabCobrado').value='';
+  document.getElementById('trabNota').value='';
+  document.getElementById('trabFormaPago').value='efectivo';
+  refreshAyudanteSelect();
+  document.getElementById('conceptosList').innerHTML='';
+  addConceptoRow();
+  recalcPagos();
+  document.getElementById('modalTrabajo').classList.add('open');
+}
+function closeTrabModal(){document.getElementById('modalTrabajo').classList.remove('open');}
+function closeTrabModalBg(e){if(e.target===document.getElementById('modalTrabajo'))closeTrabModal();}
+
+function refreshAyudanteSelect(){
+  const sel=document.getElementById('trabAyudante');
+  sel.innerHTML='<option value="">— Sin ayudante —</option>';
+  ayudantes.forEach(a=>{const o=document.createElement('option');o.value=a;o.textContent=a;sel.appendChild(o);});
+}
+function addAyudantePrompt(){
+  const n=prompt('Nombre del ayudante:');
+  if(!n)return;
+  const nombre=n.trim();
+  if(nombre&&!ayudantes.includes(nombre))ayudantes.push(nombre);
+  refreshAyudanteSelect();
+  document.getElementById('trabAyudante').value=nombre;
+}
+
+function addConceptoRow(){
+  const cont=document.getElementById('conceptosList');
+  const row=document.createElement('div');
+  row.className='concepto-row';
+  row.style.cssText='display:flex;gap:6px;align-items:center';
+  const sel=document.createElement('select');sel.style.flex='1';
+  CONCEPTOS.forEach(con=>{const o=document.createElement('option');o.value=con;o.textContent=con;sel.appendChild(o);});
+  sel.addEventListener('change',recalcPagos);
+  const qty=document.createElement('input');qty.type='number';qty.value='1';qty.min='1';qty.style.width='52px';qty.className='concepto-qty';
+  qty.addEventListener('input',recalcPagos);
+  const del=document.createElement('button');del.className='qty-btn';del.textContent='×';del.style.cssText='width:34px;height:36px;border:1px solid var(--border);border-radius:7px;background:var(--bg)';
+  del.addEventListener('click',()=>{row.remove();recalcPagos();});
+  row.appendChild(sel);row.appendChild(qty);row.appendChild(del);
+  cont.appendChild(row);
+}
+
+function leerConceptos(){
+  const rows=document.querySelectorAll('#conceptosList .concepto-row');
+  const out=[];
+  rows.forEach(r=>{
+    const con=r.querySelector('select').value;
+    const cant=parseInt(r.querySelector('.concepto-qty').value)||1;
+    out.push({concepto:con,cantidad:cant});
+  });
+  return out;
+}
+
+function recalcPagos(){
+  const cuad=document.getElementById('trabCuadrilla').value;
+  const grupo=grupoDe(cuad);
+  const conceptos=leerConceptos();
+  let tec=0,ayu=0;
+  conceptos.forEach(x=>{
+    const t=tarifas[x.concepto];
+    if(t){
+      tec+=(t[grupo]?t[grupo].monto:0)*x.cantidad;
+      ayu+=(t.ayudante?t.ayudante.monto:0)*x.cantidad;
+    }
+  });
+  document.getElementById('calcTecnico').textContent='$'+tec.toLocaleString();
+  document.getElementById('calcAyudante').textContent='$'+ayu.toLocaleString();
+  return {tec,ayu,conceptos};
+}
+
+// recalc when cuadrilla changes
+document.addEventListener('change',function(e){
+  if(e.target&&e.target.id==='trabCuadrilla')recalcPagos();
+});
+
+async function guardarTrabajo(){
+  const fecha=document.getElementById('trabFecha').value;
+  if(!fecha){alert('Selecciona la fecha');return;}
+  const cuadrilla=document.getElementById('trabCuadrilla').value;
+  const ayudante=document.getElementById('trabAyudante').value;
+  const {tec,ayu,conceptos}=recalcPagos();
+  if(!conceptos.length){alert('Agrega al menos un concepto');return;}
+  const cobrado=parseFloat(document.getElementById('trabCobrado').value)||0;
+  const forma=document.getElementById('trabFormaPago').value;
+  const nota=document.getElementById('trabNota').value.trim();
+  // semana segun la fecha elegida
+  const fd=new Date(fecha+'T12:00:00');
+  const hoy=new Date();hoy.setHours(0,0,0,0);
+  const day=(fd.getDay()+6)%7;
+  const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
+  const sid=fmtFecha(lunes);
+  try{
+    const rows=await api('trabajos',{method:'POST',body:JSON.stringify({
+      fecha,semana:sid,cuadrilla,ayudante,
+      conceptos:JSON.stringify(conceptos),
+      cobrado,forma_pago:forma,
+      pago_tecnico:tec,pago_ayudante:ayu,
+      nota,usuario:currentUser||''
+    })});
+    if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
+    closeTrabModal();
+    showToast('Trabajo guardado ✓');
+    // si el trabajo cae en la semana que veo, recargar
+    if(sid===semanaId(semanaOffset)){trabajos.push(rows[0]);renderSemana();renderResumenSemana();}
+    else{showToast('Guardado en otra semana');}
+  }catch(e){showToast('Error al guardar',true);}
+}
+
+// ── TABS TRABAJOS ──
+function switchTrabTab(t){
+  trabTab=t;
+  document.getElementById('secSemana').style.display=t==='semana'?'block':'none';
+  document.getElementById('secCorte').style.display=t==='corte'?'block':'none';
+  document.getElementById('secTarifas').style.display=t==='tarifas'?'block':'none';
+  document.getElementById('tabSemana').className='tab'+(t==='semana'?' active':'');
+  document.getElementById('tabCorte').className='tab'+(t==='corte'?' active':'');
+  document.getElementById('tabTarifas').className='tab'+(t==='tarifas'?' active':'');
+  if(t==='corte')renderCorte();
+  if(t==='tarifas')loadTarifas();
+}
+
+// ── CORTE SEMANAL ──
+function renderCorte(){
+  const list=document.getElementById('listCorte');
+  if(!trabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.</div>';return;}
+  let cobrado=0,pagoTec=0,pagoAyu=0;
+  const porTecnico={},porAyudante={},porForma={efectivo:0,transferencia:0,tarjeta:0,local:0};
+  trabajos.forEach(t=>{
+    const c=parseFloat(t.cobrado)||0;
+    cobrado+=c;
+    pagoTec+=parseFloat(t.pago_tecnico)||0;
+    pagoAyu+=parseFloat(t.pago_ayudante)||0;
+    porTecnico[t.cuadrilla]=(porTecnico[t.cuadrilla]||0)+(parseFloat(t.pago_tecnico)||0);
+    if(t.ayudante)porAyudante[t.ayudante]=(porAyudante[t.ayudante]||0)+(parseFloat(t.pago_ayudante)||0);
+    if(porForma[t.forma_pago]!==undefined)porForma[t.forma_pago]+=c;
+  });
+  const utilidad=cobrado-pagoTec-pagoAyu;
+
+  list.innerHTML='';
+  // Resumen general
+  list.appendChild(corteBlock('💰 Resumen general',[
+    ['Total cobrado',cobrado,'var(--green)'],
+    ['Pago a técnicos',pagoTec,'var(--orange)'],
+    ['Pago a ayudantes',pagoAyu,'var(--orange)'],
+    ['Utilidad empresa',utilidad,'var(--accent2)']
+  ]));
+  // Por técnico
+  const tecRows=Object.keys(porTecnico).map(k=>[k,porTecnico[k],'var(--text)']);
+  if(tecRows.length)list.appendChild(corteBlock('👷 Pago por técnico',tecRows));
+  // Por ayudante
+  const ayuRows=Object.keys(porAyudante).map(k=>[k,porAyudante[k],'var(--text)']);
+  if(ayuRows.length)list.appendChild(corteBlock('🤝 Pago por ayudante',ayuRows));
+  // Por forma de pago
+  list.appendChild(corteBlock('💳 Cobrado por forma de pago',[
+    ['Efectivo',porForma.efectivo,'var(--text)'],
+    ['Transferencia',porForma.transferencia,'var(--text)'],
+    ['Tarjeta',porForma.tarjeta,'var(--text)'],
+    ['Dejado en local',porForma.local,'var(--text)']
+  ]));
+}
+function corteBlock(titulo,filas){
+  const grp=document.createElement('div');grp.className='marca-group';
+  const hdr=document.createElement('div');hdr.className='marca-header';hdr.style.color='var(--accent2)';hdr.textContent=titulo;
+  grp.appendChild(hdr);
+  filas.forEach(([lbl,val,color])=>{
+    const row=document.createElement('div');row.className='item';row.style.padding='11px 14px';
+    row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px">'+esc(lbl)+'</span><span style="font-family:var(--mono);font-size:16px;font-weight:600;color:'+color+'">$'+(val||0).toLocaleString()+'</span></div>';
+    grp.appendChild(row);
+  });
+  return grp;
+}
+
+// ── EXPORTAR TRABAJOS ──
+async function exportarTrabajos(){
+  showToast('Generando...');
+  try{
+    const sid=semanaId(semanaOffset);
+    const rows=await api('trabajos?select=*&semana=eq.'+sid+'&order=fecha.asc');
+    let csv='\uFEFF';
+    csv+='TRABAJOS — Semana '+sid+'\n';
+    csv+='Fecha,Cuadrilla,Ayudante,Conceptos,Cobrado,Forma pago,Pago tecnico,Pago ayudante,Utilidad,Nota,Registro por\n';
+    rows.forEach(t=>{
+      const con=(Array.isArray(t.conceptos)?t.conceptos:JSON.parse(t.conceptos||'[]')).map(x=>x.concepto+(x.cantidad>1?' x'+x.cantidad:'')).join('; ');
+      const util=(parseFloat(t.cobrado)||0)-(parseFloat(t.pago_tecnico)||0)-(parseFloat(t.pago_ayudante)||0);
+      csv+=[t.fecha,t.cuadrilla,t.ayudante||'',con,t.cobrado,t.forma_pago,t.pago_tecnico,t.pago_ayudante,util,t.nota||'',t.usuario||''].map(csvCell).join(',')+'\n';
+    });
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='ClimasGreco_Trabajos_'+sid+'.csv';a.click();
+    URL.revokeObjectURL(url);
+    showToast('Exportado ✓');
+  }catch(e){showToast('Error al exportar',true);}
 }
 
 </script>
