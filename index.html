@@ -195,6 +195,20 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .tec-line-qty{font-family:var(--mono);color:var(--accent2);font-weight:500;}
 
 .tag-tras{background:rgba(168,85,247,.15)!important;border-color:rgba(168,85,247,.3)!important;color:#c084fc!important;}
+
+.user-pill{font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:20px;cursor:pointer;font-weight:700;background:rgba(148,163,184,.15);color:var(--text);border:1px solid var(--border);}
+
+
+.search-wrap{padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);}
+.search-input{width:100%;font-family:var(--mono);font-size:13px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:8px;outline:none;}
+.search-input:focus{border-color:var(--accent);}
+
+.btn-success{background:var(--green);color:#0a1a0f;font-weight:700;}
+
+.tag-user{background:rgba(148,163,184,.12)!important;color:var(--muted)!important;}
+.undo-btn{margin-top:6px;background:transparent;border:1px solid rgba(239,68,68,.3);color:var(--red);font-family:var(--sans);font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;}
+.undo-btn:active{background:rgba(239,68,68,.1);}
+
 </style>
 </head>
 <body>
@@ -230,12 +244,33 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   </div>
 </div>
 
+<!-- USER SELECT -->
+<div class="branch-screen" id="userScreen">
+  <div class="pin-logo">Climas <span>Greco</span></div>
+  <div class="branch-title">¿Quién eres?</div>
+  <div class="branch-sub" style="font-size:13px;color:var(--muted)">Para registrar tus movimientos</div>
+  <div class="branch-cards">
+    <div class="branch-card sur" onclick="selectUser('Eduardo')">
+      <div><div class="branch-name">Eduardo</div></div><div class="branch-arrow">›</div>
+    </div>
+    <div class="branch-card centro" onclick="selectUser('Alan')">
+      <div><div class="branch-name">Alan</div></div><div class="branch-arrow">›</div>
+    </div>
+    <div class="branch-card soriana" onclick="selectUser('Gregorio')">
+      <div><div class="branch-name">Gregorio</div></div><div class="branch-arrow">›</div>
+    </div>
+  </div>
+</div>
+
 <!-- APP -->
 <div id="app" style="display:none">
   <header>
     <div class="header-top">
       <div class="logo">Climas <span>Greco</span></div>
-      <div class="branch-pill" id="branchPill" onclick="goBack()">— ↩</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="user-pill" id="userPill" onclick="changeUser()">👤 —</div>
+        <div class="branch-pill" id="branchPill" onclick="goBack()">— ↩</div>
+      </div>
     </div>
     <div class="stats-bar">
       <div class="stat"><div class="stat-val" id="statUnits">—</div><div class="stat-lbl">Aires aquí</div></div>
@@ -262,6 +297,9 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="toggleFilter()">🔍 Filtrar</button>
       <button class="btn btn-ghost" onclick="loadAll()" style="margin-left:auto">↻</button>
     </div>
+    <div class="search-wrap">
+      <input class="search-input" id="searchAires" placeholder="🔎 Buscar modelo..." oninput="renderAires()">
+    </div>
     <div class="filter-bar" id="filterBar" style="display:none">
       <div class="filter-chip active" onclick="setFilter('ALL',this)">TODOS</div>
       <div class="filter-chip" onclick="setFilter('MIRAGE',this)">MIRAGE</div>
@@ -279,12 +317,15 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-primary" onclick="openModal('mat')">+ Agregar material</button>
       <button class="btn btn-ghost" onclick="loadAll()" style="margin-left:auto">↻</button>
     </div>
+    <div class="search-wrap">
+      <input class="search-input" id="searchMat" placeholder="🔎 Buscar material..." oninput="renderMats()">
+    </div>
     <div class="list" id="listMat"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
 
   <div id="secMov" style="display:none">
     <div class="controls">
-      <span style="font-size:11px;color:var(--muted);align-self:center">Salidas registradas por mes</span>
+      <button class="btn btn-success" onclick="exportarTodo()">⬇ Exportar todo (Excel)</button>
       <button class="btn btn-ghost" onclick="loadMovimientos()" style="margin-left:auto">↻</button>
     </div>
     <div class="list" id="listMov"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
@@ -474,12 +515,26 @@ function checkPin(){
   const v=document.getElementById('pinInput').value;
   if(v===PIN){
     document.getElementById('pinScreen').style.display='none';
-    document.getElementById('branchScreen').classList.add('show');
+    document.getElementById('userScreen').classList.add('show');
   }else{
     const i=document.getElementById('pinInput');i.classList.add('error');
     document.getElementById('pinErr').textContent='Código incorrecto';
     setTimeout(()=>{i.classList.remove('error');i.value='';document.getElementById('pinErr').textContent='';},1200);
   }
+}
+
+// ── USER ──
+let currentUser=null;
+function selectUser(u){
+  currentUser=u;
+  document.getElementById('userScreen').classList.remove('show');
+  document.getElementById('branchScreen').classList.add('show');
+}
+function changeUser(){
+  document.getElementById('app').style.display='none';
+  document.getElementById('branchScreen').classList.remove('show');
+  document.getElementById('userScreen').classList.add('show');
+  aires=[];mats=[];
 }
 
 // ── BRANCH ──
@@ -489,6 +544,7 @@ function selectBranch(b){
   document.getElementById('app').style.display='block';
   const pill=document.getElementById('branchPill');
   pill.textContent=b.toUpperCase()+' ↩';pill.className='branch-pill '+b;
+  document.getElementById('userPill').textContent='👤 '+currentUser;
   loadAll();
 }
 function goBack(){
@@ -551,6 +607,12 @@ function switchTab(t){
 function toggleFilter(){filterVisible=!filterVisible;document.getElementById('filterBar').style.display=filterVisible?'flex':'none';}
 function setFilter(f,el){activeFilter=f;document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');renderAires();}
 function matches(item){
+  const sEl=document.getElementById('searchAires');
+  const q=sEl?sEl.value.trim().toLowerCase():'';
+  if(q){
+    const hay=(item.modelo+' '+item.marca+' '+item.voltaje+' '+item.ton).toLowerCase();
+    if(!hay.includes(q))return false;
+  }
   if(activeFilter==='ALL')return true;
   if(activeFilter==='ZERO')return item.qty===0;
   if(activeFilter==='110v')return item.voltaje==='110v';
@@ -784,11 +846,15 @@ function renderMats(){
   const list=document.getElementById('listMat');
   if(!mats.length){list.innerHTML='<div class="empty">Sin materiales aún.<br>Agrega cables, breakers, bases, etc.</div>';updateStats();return;}
   mats.sort((a,b)=>((a.qty===0?1:0)-(b.qty===0?1:0))||a.nombre.localeCompare(b.nombre));
+  const sEl=document.getElementById('searchMat');
+  const q=sEl?sEl.value.trim().toLowerCase():'';
+  const visible=q?mats.filter(m=>(m.nombre+' '+(m.nota||'')).toLowerCase().includes(q)):mats;
   list.innerHTML='';
+  if(!visible.length){list.innerHTML='<div class="empty">Sin resultados</div>';updateStats();return;}
   const grp=document.createElement('div');grp.className='marca-group';
   const hdr=document.createElement('div');hdr.className='marca-header MATERIAL';hdr.textContent='MATERIALES';
   grp.appendChild(hdr);
-  mats.forEach(item=>{
+  visible.forEach(item=>{
     const isZ=item.qty===0;
     const card=document.createElement('div');card.className='item'+(isZ?' zero':'');card.id='mt-'+item.id;
     const main=document.createElement('div');main.className='item-main';
@@ -855,7 +921,7 @@ async function registrarMovimiento(tipo, nombre, cantidad, destino, tecnico, mot
     await api('movimientos',{method:'POST',body:JSON.stringify({
       sucursal:branch, tipo, nombre, cantidad,
       destino:destino||'', tecnico:tecnico||'', motivo:motivo||'',
-      sucursal_destino:sucDest||'',
+      sucursal_destino:sucDest||'', usuario:currentUser||'',
       fecha:new Date().toISOString()
     })});
   }catch(e){/* no romper el guardado si falla el registro */}
@@ -977,7 +1043,7 @@ async function ejecutarTraspaso(tipo,nombre,cantidad,itemData,sucDest){
     // Registrar entrada en la sucursal destino (positiva, origen traspaso)
     await api('movimientos',{method:'POST',body:JSON.stringify({
       sucursal:sucDest,tipo,nombre,cantidad:cantidad,
-      destino:'traspaso_in',tecnico:'',motivo:'',sucursal_destino:branch,
+      destino:'traspaso_in',tecnico:'',motivo:'',sucursal_destino:branch,usuario:currentUser||'',
       fecha:new Date().toISOString()
     })});
     showToast('Traspasado a '+BRANCHES[sucDest]+' ✓');
@@ -1035,9 +1101,12 @@ function renderMovimientos(){
       const d=new Date(m.fecha);
       const fecha=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
       const isOut=m.cantidad<0;
+      const userTag=m.usuario?'<span class="tag tag-user">👤 '+esc(m.usuario)+'</span>':'';
       const row=document.createElement('div');
       row.className='mov-row'+(isOut?' out':' in');
-      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span>'+destLabel(m)+'<span class="tag">'+fecha+'</span></div>'+(m.motivo?'<div style="font-size:10px;color:var(--orange);margin-top:3px;font-style:italic">↩ '+esc(m.motivo)+'</div>':'')+'</div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
+      const mio=(m.usuario===currentUser);
+      const undoBtn=mio?'<button class="undo-btn" onclick="deshacerMovimiento('+m.id+')">↶ Deshacer</button>':'';
+      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span>'+destLabel(m)+userTag+'<span class="tag">'+fecha+'</span></div>'+(m.motivo?'<div style="font-size:10px;color:var(--orange);margin-top:3px;font-style:italic">↩ '+esc(m.motivo)+'</div>':'')+undoBtn+'</div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
       grp.appendChild(row);
     });
     list.appendChild(grp);
@@ -1127,6 +1196,93 @@ function renderTecnicos(movs){
     }
     list.appendChild(card);
   });
+}
+
+
+// ── EXPORTAR TODO A CSV (abre en Excel) ──
+async function exportarTodo(){
+  showToast('Generando respaldo...');
+  try{
+    const inv=await api('inventario?select=*&order=sucursal.asc,marca.asc,modelo.asc');
+    const mat=await api('materiales?select=*&order=sucursal.asc,nombre.asc');
+    const mov=await api('movimientos?select=*&order=fecha.desc');
+
+    const BR={sur:'SUR',centro:'CENTRO',soriana:'SORIANA'};
+    let csv='\uFEFF'; // BOM para acentos en Excel
+
+    // AIRES
+    csv+='AIRES\n';
+    csv+='Sucursal,Marca,Modelo,Voltaje,Tonelaje,Cantidad,Nota\n';
+    inv.forEach(r=>{csv+=[BR[r.sucursal]||r.sucursal,r.marca,r.modelo,r.voltaje,r.ton,r.qty,r.nota||''].map(csvCell).join(',')+'\n';});
+
+    csv+='\nMATERIALES\n';
+    csv+='Sucursal,Nombre,Cantidad,Nota\n';
+    mat.forEach(r=>{csv+=[BR[r.sucursal]||r.sucursal,r.nombre,r.qty,r.nota||''].map(csvCell).join(',')+'\n';});
+
+    csv+='\nMOVIMIENTOS\n';
+    csv+='Fecha,Sucursal,Tipo,Nombre,Cantidad,Destino,Tecnico,Sucursal destino,Motivo,Usuario\n';
+    mov.forEach(r=>{
+      const f=new Date(r.fecha);
+      const fecha=f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0')+' '+String(f.getHours()).padStart(2,'0')+':'+String(f.getMinutes()).padStart(2,'0');
+      csv+=[fecha,BR[r.sucursal]||r.sucursal,r.tipo,r.nombre,r.cantidad,r.destino||'',r.tecnico||'',BR[r.sucursal_destino]||r.sucursal_destino||'',r.motivo||'',r.usuario||''].map(csvCell).join(',')+'\n';
+    });
+
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const hoy=new Date().toISOString().slice(0,10);
+    a.href=url;a.download='ClimasGreco_Inventario_'+hoy+'.csv';
+    a.click();URL.revokeObjectURL(url);
+    showToast('Respaldo descargado ✓');
+  }catch(e){showToast('Error al exportar',true);}
+}
+function csvCell(v){const s=String(v==null?'':v);return '"'+s.replace(/"/g,'""')+'"';}
+
+// ── DESHACER MOVIMIENTO ──
+async function deshacerMovimiento(id){
+  const m=movimientos.find(x=>x.id===id);
+  if(!m)return;
+  if(m.usuario!==currentUser){alert('Solo '+(m.usuario||'quien lo creó')+' puede deshacer este movimiento');return;}
+  if(!confirm('¿Deshacer este movimiento? Se revertirá el inventario.'))return;
+
+  try{
+    // Revertir el stock en la sucursal del movimiento
+    await revertirStock(m.sucursal,m.tipo,m.nombre,m.cantidad,m);
+
+    // Si fue traspaso (salida), revertir también la entrada en destino
+    if(m.destino==='traspaso'&&m.sucursal_destino){
+      // buscar y revertir el movimiento espejo (traspaso_in)
+      const espejos=await api(`movimientos?select=*&sucursal=eq.${m.sucursal_destino}&destino=eq.traspaso_in&nombre=eq.${encodeURIComponent(m.nombre)}&order=fecha.desc&limit=1`);
+      if(espejos.length){
+        const esp=espejos[0];
+        await revertirStock(esp.sucursal,esp.tipo,esp.nombre,esp.cantidad,esp);
+        await api(`movimientos?id=eq.${esp.id}`,{method:'DELETE'});
+      }
+    }
+
+    // Borrar el movimiento
+    await api(`movimientos?id=eq.${m.id}`,{method:'DELETE'});
+    showToast('Movimiento deshecho ✓');
+    loadMovimientos();loadGlobalTotal();
+  }catch(e){showToast('Error al deshacer',true);}
+}
+
+// Revierte: si el movimiento sumó X, ahora resta X (y viceversa)
+async function revertirStock(suc,tipo,nombre,cantidad,m){
+  const tabla=tipo==='aire'?'inventario':'materiales';
+  let q;
+  if(tipo==='aire'){
+    // necesitamos identificar el equipo: lo buscamos por nombre(modelo) en esa sucursal
+    q=`${tabla}?select=*&sucursal=eq.${suc}&modelo=eq.${encodeURIComponent(nombre)}`;
+  }else{
+    q=`${tabla}?select=*&sucursal=eq.${suc}&nombre=eq.${encodeURIComponent(nombre)}`;
+  }
+  const found=await api(q);
+  if(found.length){
+    const ex=found[0];
+    const nuevo=Math.max(0,(parseInt(ex.qty)||0)-cantidad);
+    await api(`${tabla}?id=eq.${ex.id}`,{method:'PATCH',body:JSON.stringify({qty:nuevo,updated_at:new Date().toISOString()})});
+  }
 }
 
 </script>
