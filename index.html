@@ -215,6 +215,14 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .concepto-row select{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 8px;border-radius:7px;-webkit-appearance:none;}
 .concepto-row input{font-family:var(--mono);font-size:13px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px;border-radius:7px;text-align:center;}
 
+
+.btn-batch-in{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3);}
+.btn-batch-tras{background:rgba(168,85,247,.15);color:#c084fc;border:1px solid rgba(168,85,247,.3);}
+
+
+.batch-result{font-size:12px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:7px;cursor:pointer;color:var(--accent2);}
+.batch-result:active{background:var(--border);}
+
 </style>
 </head>
 <body>
@@ -331,6 +339,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="toggleFilter()">🔍 Filtrar</button>
       <button class="btn btn-ghost" onclick="loadAll()" style="margin-left:auto">↻</button>
     </div>
+    <div class="controls" style="border-top:none;padding-top:0">
+      <button class="btn btn-batch-in" onclick="openBatch('aire','proveedor')">📥 Recibir de proveedor</button>
+      <button class="btn btn-batch-tras" onclick="openBatch('aire','traspaso')">🏢 Surtir sucursal</button>
+    </div>
     <div class="search-wrap">
       <input class="search-input" id="searchAires" placeholder="🔎 Buscar modelo..." oninput="renderAires()">
     </div>
@@ -350,6 +362,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="controls">
       <button class="btn btn-primary" onclick="openModal('mat')">+ Agregar material</button>
       <button class="btn btn-ghost" onclick="loadAll()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="controls" style="border-top:none;padding-top:0">
+      <button class="btn btn-batch-in" onclick="openBatch('material','proveedor')">📥 Recibir de proveedor</button>
+      <button class="btn btn-batch-tras" onclick="openBatch('material','traspaso')">🏢 Surtir sucursal</button>
     </div>
     <div class="search-wrap">
       <input class="search-input" id="searchMat" placeholder="🔎 Buscar material..." oninput="renderMats()">
@@ -540,6 +556,43 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="editor-actions">
       <button class="btn btn-primary" style="flex:1" onclick="addMat()">Guardar</button>
       <button class="btn btn-cancel" onclick="closeModal('modalMat')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL LOTE (entrada proveedor / traspaso masivo) -->
+<div class="modal" id="modalBatch" onclick="closeBatchBg(event)">
+  <div class="modal-sheet">
+    <div class="modal-title" id="batchTitle">Lote</div>
+    <div id="batchSubtitle" style="font-size:12px;color:var(--muted);margin-top:-4px"></div>
+
+    <!-- Sucursal destino (solo traspaso) -->
+    <div class="field" id="batchSucWrap" style="display:none">
+      <label>¿A qué sucursal?</label>
+      <select id="batchSuc"></select>
+    </div>
+
+    <!-- Buscador para agregar al lote -->
+    <div class="field">
+      <label>Buscar y agregar al lote</label>
+      <input type="text" id="batchSearch" placeholder="🔎 Escribe modelo o nombre..." oninput="batchSearchResults()" autocomplete="off">
+    </div>
+    <div id="batchResults" style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto"></div>
+
+    <!-- Boton dar de alta nuevo -->
+    <button class="btn btn-ghost" id="batchNuevoBtn" onclick="batchNuevoItem()" style="align-self:flex-start">+ Dar de alta nuevo</button>
+
+    <!-- Lista del lote actual -->
+    <div class="field" style="margin-top:4px"><label>En este lote (<span id="batchCount">0</span>)</label></div>
+    <div id="batchLista" style="display:flex;flex-direction:column;gap:6px"></div>
+
+    <div class="qty-block" style="margin-top:4px">
+      <div class="qty-actual-row"><span class="qty-actual-lbl">Total piezas</span><span class="qty-actual-val" id="batchTotal" style="color:var(--accent2)">0</span></div>
+    </div>
+
+    <div class="editor-actions">
+      <button class="btn btn-primary" style="flex:1" onclick="confirmBatch()">Confirmar lote</button>
+      <button class="btn btn-cancel" onclick="closeBatch()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1297,7 +1350,8 @@ function renderMovimientos(){
       const mio=(m.usuario===currentUser);
       const undoBtn=mio?'<button class="undo-btn" onclick="deshacerMovimiento('+m.id+')">↶ Deshacer</button>':'';
       const espTag=(m.tipo==='aire'&&(m.voltaje||m.ton))?'<span class="tag">'+esc((m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||''))+'</span>':'';
-      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span>'+espTag+destLabel(m)+userTag+'<span class="tag">'+fecha+'</span></div>'+(m.motivo?'<div style="font-size:10px;color:var(--orange);margin-top:3px;font-style:italic">↩ '+esc(m.motivo)+'</div>':'')+undoBtn+'</div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
+      const loteTag=m.lote?'<span class="tag" style="background:rgba(168,85,247,.12);color:#c084fc">📦 lote</span>':'';
+      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span>'+espTag+loteTag+destLabel(m)+userTag+'<span class="tag">'+fecha+'</span></div>'+(m.motivo?'<div style="font-size:10px;color:var(--orange);margin-top:3px;font-style:italic">↩ '+esc(m.motivo)+'</div>':'')+undoBtn+'</div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
       grp.appendChild(row);
     });
     list.appendChild(grp);
@@ -1907,6 +1961,208 @@ async function exportarTrabajos(){
     URL.revokeObjectURL(url);
     showToast('Exportado ✓');
   }catch(e){showToast('Error al exportar',true);}
+}
+
+
+// ════════════════ LOTE MASIVO (proveedor / traspaso) ════════════════
+let batchTipo=null;      // 'aire' | 'material'
+let batchAccion=null;    // 'proveedor' | 'traspaso'
+let batchItems=[];       // [{key, itemData, cantidad, esNuevo}]
+
+function openBatch(tipo,accion){
+  batchTipo=tipo;batchAccion=accion;batchItems=[];
+  const esProv=(accion==='proveedor');
+  document.getElementById('batchTitle').textContent=(esProv?'📥 Recibir de proveedor':'🏢 Surtir otra sucursal')+(tipo==='aire'?' — Aires':' — Materiales');
+  document.getElementById('batchSubtitle').textContent=esProv
+    ? 'Suma equipos al inventario de '+BRANCHES[branch]
+    : 'Mueve equipos de '+BRANCHES[branch]+' a otra sucursal';
+  // sucursal destino
+  const sucWrap=document.getElementById('batchSucWrap');
+  if(esProv){sucWrap.style.display='none';}
+  else{
+    sucWrap.style.display='flex';
+    const sel=document.getElementById('batchSuc');
+    sel.innerHTML='';
+    Object.keys(BRANCHES).forEach(b=>{if(b!==branch){const o=document.createElement('option');o.value=b;o.textContent=BRANCHES[b];sel.appendChild(o);}});
+  }
+  document.getElementById('batchSearch').value='';
+  document.getElementById('batchResults').innerHTML='';
+  renderBatchLista();
+  document.getElementById('modalBatch').classList.add('open');
+}
+function closeBatch(){document.getElementById('modalBatch').classList.remove('open');}
+function closeBatchBg(e){if(e.target===document.getElementById('modalBatch'))closeBatch();}
+
+// Buscar en el inventario local (modelos existentes)
+function batchSearchResults(){
+  const q=document.getElementById('batchSearch').value.trim().toLowerCase();
+  const cont=document.getElementById('batchResults');
+  if(!q){cont.innerHTML='';return;}
+  const pool=batchTipo==='aire'?aires:mats;
+  const matches=pool.filter(it=>{
+    const hay=batchTipo==='aire'
+      ? (it.modelo+' '+it.marca+' '+it.voltaje+' '+it.ton).toLowerCase()
+      : (it.nombre+'').toLowerCase();
+    return hay.includes(q);
+  }).slice(0,8);
+  cont.innerHTML='';
+  if(!matches.length){cont.innerHTML='<div style="font-size:11px;color:var(--muted);padding:6px">Sin coincidencias. Usa "+ Dar de alta nuevo".</div>';return;}
+  matches.forEach(it=>{
+    const label=batchTipo==='aire'?(it.marca+' '+it.modelo+' · '+it.voltaje+' · '+it.ton):it.nombre;
+    const d=document.createElement('div');
+    d.className='batch-result';
+    d.textContent='+ '+label;
+    d.onclick=()=>{
+      const itemData=batchTipo==='aire'
+        ? {marca:it.marca,modelo:it.modelo,voltaje:it.voltaje,ton:it.ton}
+        : {nombre:it.nombre};
+      addToBatch(itemData,false);
+      document.getElementById('batchSearch').value='';
+      cont.innerHTML='';
+    };
+    cont.appendChild(d);
+  });
+}
+
+function keyOf(itemData){
+  return batchTipo==='aire'
+    ? (itemData.marca+'|'+itemData.modelo+'|'+itemData.voltaje+'|'+itemData.ton)
+    : itemData.nombre;
+}
+
+function addToBatch(itemData,esNuevo){
+  const k=keyOf(itemData);
+  const ex=batchItems.find(b=>b.key===k);
+  if(ex){ex.cantidad++;}
+  else{batchItems.push({key:k,itemData,cantidad:1,esNuevo:!!esNuevo});}
+  renderBatchLista();
+}
+
+function batchNuevoItem(){
+  if(batchTipo==='aire'){
+    const marca=prompt('Marca (MIRAGE, DUVENTUS, COLDEN, OTRA):','MIRAGE');
+    if(!marca)return;
+    const modelo=prompt('Modelo:');if(!modelo)return;
+    const voltaje=prompt('Voltaje (110v / 220v):','220v');if(!voltaje)return;
+    const ton=prompt('Tonelaje (1 ton, 1.5 ton, 2 ton, 3 ton):','1 ton');if(!ton)return;
+    addToBatch({marca:marca.trim().toUpperCase(),modelo:modelo.trim(),voltaje:voltaje.trim(),ton:ton.trim()},true);
+  }else{
+    const nombre=prompt('Nombre del material:');if(!nombre)return;
+    addToBatch({nombre:nombre.trim()},true);
+  }
+}
+
+function renderBatchLista(){
+  const cont=document.getElementById('batchLista');
+  cont.innerHTML='';
+  let total=0;
+  batchItems.forEach((b,idx)=>{
+    total+=b.cantidad;
+    const label=batchTipo==='aire'
+      ? (b.itemData.marca+' '+b.itemData.modelo+' · '+b.itemData.voltaje+' · '+b.itemData.ton)
+      : b.itemData.nombre;
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 9px';
+    row.innerHTML='<div style="flex:1;font-size:12px;font-weight:600">'+esc(label)+(b.esNuevo?' <span style="color:var(--green);font-size:9px">NUEVO</span>':'')+'</div>';
+    const qrow=document.createElement('div');qrow.style.cssText='display:flex;align-items:center;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden';
+    const bm=document.createElement('button');bm.className='qty-btn';bm.textContent='−';bm.style.cssText='width:32px;height:30px;font-size:18px';
+    const inp=document.createElement('input');inp.type='number';inp.value=b.cantidad;inp.min=1;inp.style.cssText='width:42px;text-align:center;font-family:var(--mono);font-size:14px;background:none;border:none;color:var(--text);outline:none';
+    const bp=document.createElement('button');bp.className='qty-btn';bp.textContent='+';bp.style.cssText='width:32px;height:30px;font-size:18px';
+    bm.onclick=()=>{b.cantidad=Math.max(1,b.cantidad-1);renderBatchLista();};
+    bp.onclick=()=>{b.cantidad++;renderBatchLista();};
+    inp.onchange=()=>{b.cantidad=Math.max(1,parseInt(inp.value)||1);renderBatchLista();};
+    qrow.appendChild(bm);qrow.appendChild(inp);qrow.appendChild(bp);
+    const del=document.createElement('button');del.textContent='×';del.style.cssText='width:30px;height:30px;border:1px solid rgba(239,68,68,.3);border-radius:6px;background:transparent;color:var(--red);cursor:pointer';
+    del.onclick=()=>{batchItems.splice(idx,1);renderBatchLista();};
+    row.appendChild(qrow);row.appendChild(del);
+    cont.appendChild(row);
+  });
+  document.getElementById('batchCount').textContent=batchItems.length;
+  document.getElementById('batchTotal').textContent=total;
+}
+
+async function confirmBatch(){
+  if(!batchItems.length){alert('Agrega al menos un equipo al lote');return;}
+  const esProv=(batchAccion==='proveedor');
+  const sucDest=esProv?'':document.getElementById('batchSuc').value;
+  const lote='L'+Date.now();
+  closeBatch();
+  showToast('Procesando lote...');
+
+  try{
+    for(const b of batchItems){
+      const it=b.itemData;
+      const cant=b.cantidad;
+      const nombre=batchTipo==='aire'?it.modelo:it.nombre;
+
+      if(esProv){
+        // ENTRADA proveedor: sumar al inventario local (crear si no existe)
+        await upsertStock(branch,batchTipo,it,cant);
+        await registrarMovLote(batchTipo,nombre,cant,'proveedor','','', '',it.voltaje,it.ton,lote);
+      }else{
+        // TRASPASO: restar aqui, sumar alla
+        await restarStock(branch,batchTipo,it,cant);
+        await upsertStock(sucDest,batchTipo,it,cant);
+        // movimiento salida aqui
+        await registrarMovLote(batchTipo,nombre,-cant,'traspaso','','', sucDest,it.voltaje,it.ton,lote);
+        // movimiento entrada alla
+        await api('movimientos',{method:'POST',body:JSON.stringify({
+          sucursal:sucDest,tipo:batchTipo,nombre,cantidad:cant,
+          destino:'traspaso_in',tecnico:'',motivo:'',sucursal_destino:branch,usuario:currentUser||'',
+          voltaje:it.voltaje||'',ton:it.ton||'',lote,fecha:new Date().toISOString()
+        })});
+      }
+    }
+    showToast((esProv?'Entrada':'Traspaso')+' registrado ✓');
+    await loadAll();
+  }catch(e){showToast('Error en el lote',true);}
+}
+
+// Suma stock (crea si no existe)
+async function upsertStock(suc,tipo,it,cant){
+  if(tipo==='aire'){
+    const q='inventario?select=*&sucursal=eq.'+suc+
+      '&marca=eq.'+encodeURIComponent(it.marca)+
+      '&modelo=eq.'+encodeURIComponent(it.modelo)+
+      '&voltaje=eq.'+encodeURIComponent(it.voltaje)+
+      '&ton=eq.'+encodeURIComponent(it.ton);
+    const f=await api(q);
+    if(f.length){await api('inventario?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:(parseInt(f[0].qty)||0)+cant,updated_at:new Date().toISOString()})});}
+    else{await api('inventario',{method:'POST',body:JSON.stringify({sucursal:suc,marca:it.marca,modelo:it.modelo,voltaje:it.voltaje,ton:it.ton,qty:cant,nota:''})});}
+  }else{
+    const q='materiales?select=*&sucursal=eq.'+suc+'&nombre=eq.'+encodeURIComponent(it.nombre);
+    const f=await api(q);
+    if(f.length){await api('materiales?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:(parseInt(f[0].qty)||0)+cant,updated_at:new Date().toISOString()})});}
+    else{await api('materiales',{method:'POST',body:JSON.stringify({sucursal:suc,nombre:it.nombre,qty:cant,nota:''})});}
+  }
+}
+// Resta stock
+async function restarStock(suc,tipo,it,cant){
+  if(tipo==='aire'){
+    const q='inventario?select=*&sucursal=eq.'+suc+
+      '&marca=eq.'+encodeURIComponent(it.marca)+
+      '&modelo=eq.'+encodeURIComponent(it.modelo)+
+      '&voltaje=eq.'+encodeURIComponent(it.voltaje)+
+      '&ton=eq.'+encodeURIComponent(it.ton);
+    const f=await api(q);
+    if(f.length){await api('inventario?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:Math.max(0,(parseInt(f[0].qty)||0)-cant),updated_at:new Date().toISOString()})});}
+  }else{
+    const q='materiales?select=*&sucursal=eq.'+suc+'&nombre=eq.'+encodeURIComponent(it.nombre);
+    const f=await api(q);
+    if(f.length){await api('materiales?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:Math.max(0,(parseInt(f[0].qty)||0)-cant),updated_at:new Date().toISOString()})});}
+  }
+}
+// Registrar movimiento con lote
+async function registrarMovLote(tipo,nombre,cantidad,destino,tecnico,motivo,sucDest,voltaje,ton,lote){
+  try{
+    await api('movimientos',{method:'POST',body:JSON.stringify({
+      sucursal:branch,tipo,nombre,cantidad,
+      destino:destino||'',tecnico:tecnico||'',motivo:motivo||'',
+      sucursal_destino:sucDest||'',usuario:currentUser||'',
+      voltaje:voltaje||'',ton:ton||'',lote:lote||'',
+      fecha:new Date().toISOString()
+    })});
+  }catch(e){}
 }
 
 </script>
