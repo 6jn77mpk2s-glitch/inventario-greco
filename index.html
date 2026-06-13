@@ -383,8 +383,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 
   <div id="secTec" style="display:none">
     <div class="controls">
-      <span style="font-size:11px;color:var(--muted);align-self:center">Equipos en poder de cada técnico</span>
-      <button class="btn btn-ghost" onclick="loadTecnicos()" style="margin-left:auto">↻</button>
+      <button class="btn btn-ghost" onclick="cambiarDiaTec(-1)">← Día</button>
+      <input type="date" id="tecFecha" onchange="loadTecnicos()" style="font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:7px;flex:1">
+      <button class="btn btn-ghost" onclick="cambiarDiaTec(1)">Día →</button>
+      <button class="btn btn-ghost" onclick="loadTecnicos()">↻</button>
     </div>
     <div class="list" id="listTec"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
@@ -1378,11 +1380,25 @@ function destLabel(m){
 }
 
 // ── POR TÉCNICO ──
+let tecFechaSel=null; // 'YYYY-MM-DD'
+
+function fechaLocalISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+function cambiarDiaTec(delta){
+  const inp=document.getElementById('tecFecha');
+  const base=inp.value?new Date(inp.value+'T12:00:00'):new Date();
+  base.setDate(base.getDate()+delta);
+  inp.value=fechaLocalISO(base);
+  loadTecnicos();
+}
+
 async function loadTecnicos(){
   const list=document.getElementById('listTec');
+  const inp=document.getElementById('tecFecha');
+  if(!inp.value)inp.value=fechaLocalISO(new Date());
+  tecFechaSel=inp.value;
   list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
-    // Todos los movimientos de TODAS las sucursales que involucran técnicos internos
     const movs=await api('movimientos?select=*');
     renderTecnicos(movs);
   }catch(e){
@@ -1393,52 +1409,78 @@ async function loadTecnicos(){
 function renderTecnicos(movs){
   const list=document.getElementById('listTec');
   const techs=['Alan','Eduardo','Henry','David'];
-  // Saldo por técnico = salidas a ese técnico (interno) - devoluciones de ese técnico
-  const saldo={};const detalle={};
-  techs.forEach(t=>{saldo[t]=0;detalle[t]=[];});
-  movs.forEach(m=>{
-    if(m.destino==='interno' && m.tecnico && saldo[m.tecnico]!==undefined){
-      // salida hacia técnico: cantidad es negativa, le suma equipos en su poder
-      saldo[m.tecnico]+=Math.abs(m.cantidad);
-      detalle[m.tecnico].push(m);
-    }
-    if(m.destino==='devolucion' && m.tecnico && saldo[m.tecnico]!==undefined){
-      // devolución del técnico: le resta equipos en su poder
-      saldo[m.tecnico]-=Math.abs(m.cantidad);
-      detalle[m.tecnico].push(m);
+
+  // Solo movimientos del día seleccionado, asignaciones (interno) y devoluciones
+  const delDia=movs.filter(m=>{
+    if(!m.fecha)return false;
+    const f=new Date(m.fecha);
+    return fechaLocalISO(f)===tecFechaSel;
+  });
+
+  // Por técnico: aires (cuentan) y materiales (solo se muestran)
+  const data={};
+  techs.forEach(t=>{data[t]={aires:0,airesDet:{},matDet:{}};});
+
+  delDia.forEach(m=>{
+    if(!m.tecnico||data[m.tecnico]===undefined)return;
+    const esAsignacion=(m.destino==='interno');
+    const esDevol=(m.destino==='devolucion');
+    if(!esAsignacion&&!esDevol)return;
+    const sign=esDevol?-1:1;
+    const cant=Math.abs(m.cantidad)*sign;
+    if(m.tipo==='aire'){
+      data[m.tecnico].aires+=cant;
+      const key=m.nombre+((m.voltaje||m.ton)?' ('+(m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||'')+')':'');
+      data[m.tecnico].airesDet[key]=(data[m.tecnico].airesDet[key]||0)+cant;
+    }else{
+      const key=m.nombre;
+      data[m.tecnico].matDet[key]=(data[m.tecnico].matDet[key]||0)+cant;
     }
   });
 
   list.innerHTML='';
+  const hoy=fechaLocalISO(new Date());
   const intro=document.createElement('div');
   intro.style.cssText='font-size:11px;color:var(--muted);margin-bottom:8px;text-align:center';
-  intro.textContent='Equipos/materiales que cada técnico tiene en su poder (todas las sucursales)';
+  const fLabel=tecFechaSel===hoy?'hoy':tecFechaSel;
+  intro.textContent='Aires asignados a cada técnico — '+fLabel+' (el número grande son solo aires)';
   list.appendChild(intro);
 
   techs.forEach(t=>{
-    const card=document.createElement('div');
-    card.className='tec-card';
-    const count=saldo[t];
-    card.innerHTML='<div class="tec-head"><div class="tec-name">👷 '+t+'</div><div class="tec-count'+(count>0?' has':'')+'">'+count+'</div></div>';
+    const d=data[t];
+    const card=document.createElement('div');card.className='tec-card';
+    card.innerHTML='<div class="tec-head"><div class="tec-name">👷 '+t+'</div><div class="tec-count'+(d.aires>0?' has':'')+'">'+d.aires+'</div></div>';
 
-    // Detalle expandible
-    if(detalle[t].length){
+    // Aires detalle
+    const airesKeys=Object.keys(d.airesDet).filter(k=>d.airesDet[k]!==0);
+    const matKeys=Object.keys(d.matDet).filter(k=>d.matDet[k]!==0);
+
+    if(airesKeys.length){
       const det=document.createElement('div');det.className='tec-detail';
-      // Agrupar por nombre de equipo
-      const byName={};
-      detalle[t].forEach(m=>{
-        const sign=m.destino==='devolucion'?-Math.abs(m.cantidad):Math.abs(m.cantidad);
-        const key=m.nombre+(m.tipo==='aire'&&(m.voltaje||m.ton)?' ('+(m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||'')+')':'');
-        byName[key]=(byName[key]||0)+sign;
+      const sub=document.createElement('div');sub.style.cssText='font-size:9px;color:var(--accent2);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px';sub.textContent='Aires';
+      det.appendChild(sub);
+      airesKeys.forEach(n=>{
+        const line=document.createElement('div');line.className='tec-line';
+        line.innerHTML='<span>'+esc(n)+'</span><span class="tec-line-qty">'+d.airesDet[n]+'</span>';
+        det.appendChild(line);
       });
-      Object.keys(byName).forEach(n=>{
-        if(byName[n]!==0){
-          const line=document.createElement('div');line.className='tec-line';
-          line.innerHTML='<span>'+esc(n)+'</span><span class="tec-line-qty">'+byName[n]+'</span>';
-          det.appendChild(line);
-        }
+      card.appendChild(det);
+    }
+    if(matKeys.length){
+      const det=document.createElement('div');det.className='tec-detail';
+      const sub=document.createElement('div');sub.style.cssText='font-size:9px;color:var(--orange);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px';sub.textContent='Materiales';
+      det.appendChild(sub);
+      matKeys.forEach(n=>{
+        const line=document.createElement('div');line.className='tec-line';
+        line.innerHTML='<span>'+esc(n)+'</span><span class="tec-line-qty" style="color:var(--orange)">'+d.matDet[n]+'</span>';
+        det.appendChild(line);
       });
-      if(det.children.length)card.appendChild(det);
+      card.appendChild(det);
+    }
+    if(!airesKeys.length&&!matKeys.length){
+      const det=document.createElement('div');det.className='tec-detail';
+      det.innerHTML='<div style="font-size:11px;color:var(--muted)">Nada asignado este día</div>';
+      card.appendChild(det);
     }
     list.appendChild(card);
   });
