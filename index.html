@@ -223,6 +223,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .batch-result{font-size:12px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:7px;cursor:pointer;color:var(--accent2);}
 .batch-result:active{background:var(--border);}
 
+
+.desglose-row input{font-family:var(--mono);font-size:13px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 9px;border-radius:7px;outline:none;}
+.desglose-row input:focus{border-color:var(--accent);}
+
 </style>
 </head>
 <body>
@@ -430,6 +434,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   <div class="tabs">
     <div class="tab active" id="tabSemana" onclick="switchTrabTab('semana')">📅 SEMANA</div>
     <div class="tab" id="tabCorte" onclick="switchTrabTab('corte')">💰 CORTE</div>
+    <div class="tab" id="tabPend" onclick="switchTrabTab('pendientes')">📌 DEBEN</div>
     <div class="tab" id="tabTarifas" onclick="switchTrabTab('tarifas')">🏷️ TARIFAS</div>
   </div>
 
@@ -452,6 +457,15 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="list" id="listCorte"></div>
   </div>
 
+  <!-- PENDIENTES (cuentas por cobrar) -->
+  <div id="secPend" style="display:none">
+    <div class="controls">
+      <button class="btn btn-primary" onclick="openPendienteModal()">+ Agregar pendiente</button>
+      <button class="btn btn-ghost" onclick="loadPendientes()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="list" id="listPend"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+
   <!-- TARIFAS -->
   <div id="secTarifas" style="display:none">
     <div class="controls">
@@ -468,39 +482,69 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="modal-title" id="trabModalTitle">➕ Nuevo trabajo</div>
 
     <div class="field-row">
-      <div class="field"><label>Fecha</label>
-        <input type="date" id="trabFecha">
-      </div>
-      <div class="field"><label>Cuadrilla (técnico)</label>
+      <div class="field"><label>Fecha</label><input type="date" id="trabFecha"></div>
+      <div class="field"><label>Cuadrilla</label>
         <select id="trabCuadrilla"><option>Alan</option><option>Eduardo</option><option>Henry</option><option>David</option></select>
       </div>
     </div>
 
-    <div class="field"><label>Ayudante</label>
-      <div style="display:flex;gap:6px">
-        <select id="trabAyudante" style="flex:1"></select>
-        <button class="btn btn-ghost" onclick="addAyudantePrompt()" style="white-space:nowrap">+ Nuevo</button>
-      </div>
+    <!-- DESGLOSE DEL COBRO -->
+    <div class="field"><label>Desglose del cobro al cliente</label></div>
+    <div id="desgloseList" style="display:flex;flex-direction:column;gap:6px"></div>
+    <button class="btn btn-ghost" onclick="addDesgloseRow('','')" style="align-self:flex-start">+ Agregar renglón</button>
+
+    <!-- Factura -->
+    <div style="display:flex;align-items:center;gap:10px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:10px 12px">
+      <label style="font-size:13px;font-weight:600;flex:1">¿Lleva factura? (+8%)</label>
+      <input type="checkbox" id="trabFactura" onchange="recalcTrabajo()" style="width:20px;height:20px">
     </div>
 
-    <!-- Conceptos -->
-    <div class="field"><label>Conceptos del trabajo</label></div>
-    <div id="conceptosList" style="display:flex;flex-direction:column;gap:6px"></div>
-    <button class="btn btn-ghost" onclick="addConceptoRow()" style="align-self:flex-start">+ Agregar concepto</button>
-
-    <!-- Pagos calculados -->
-    <div class="qty-block" style="margin-top:4px">
-      <div class="qty-actual-row"><span class="qty-actual-lbl">Pago al técnico</span><span class="qty-actual-val" id="calcTecnico" style="color:var(--green)">$0</span></div>
-      <div class="qty-actual-row"><span class="qty-actual-lbl">Pago al ayudante</span><span class="qty-actual-val" id="calcAyudante" style="color:var(--green)">$0</span></div>
+    <!-- Totales -->
+    <div class="qty-block">
+      <div class="qty-actual-row"><span class="qty-actual-lbl">Subtotal</span><span class="qty-actual-val" id="trabSubtotal">$0</span></div>
+      <div class="qty-actual-row" id="trabIvaRow" style="display:none"><span class="qty-actual-lbl">Factura 8%</span><span class="qty-actual-val" id="trabIva" style="color:var(--orange)">$0</span></div>
+      <div class="qty-total-row"><span class="qty-total-lbl">Total a cobrar</span><span class="qty-total-val" id="trabTotal">$0</span></div>
     </div>
 
-    <!-- Cobro al cliente -->
+    <!-- Cómo / quién cobra -->
+    <div class="field"><label>¿Cómo se cobró?</label>
+      <select id="trabFormaPago" onchange="toggleQuienCobra()">
+        <option value="efectivo">💵 Efectivo</option>
+        <option value="transferencia">🏦 Transferencia a mí</option>
+        <option value="tarjeta">💳 Tarjeta oficina</option>
+        <option value="cobra_otro">👤 Lo cobra alguien más</option>
+        <option value="local">🏪 Dejó en local</option>
+      </select>
+    </div>
+    <div class="field" id="quienCobraWrap" style="display:none"><label>¿Quién lo cobra?</label>
+      <input type="text" id="trabQuienCobra" placeholder="ej. Gre">
+    </div>
+
+    <!-- Pago a técnico (manual con sugerencia) -->
+    <div class="field"><label>Pago al técnico <span id="sugTecnico" style="color:var(--muted);font-size:10px"></span></label>
+      <input type="number" id="trabPagoTec" placeholder="0" inputmode="decimal">
+    </div>
+
+    <!-- Ayudante -->
     <div class="field-row">
-      <div class="field"><label>Cobrado al cliente</label>
-        <input type="number" id="trabCobrado" placeholder="0" inputmode="decimal">
+      <div class="field"><label>Ayudante</label>
+        <div style="display:flex;gap:6px">
+          <select id="trabAyudante" style="flex:1"></select>
+          <button class="btn btn-ghost" onclick="addAyudantePrompt()" style="white-space:nowrap">+</button>
+        </div>
       </div>
-      <div class="field"><label>Forma de pago</label>
-        <select id="trabFormaPago"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="tarjeta">Tarjeta</option><option value="local">Dejó en local</option></select>
+      <div class="field"><label>Pago ayudante</label>
+        <input type="number" id="trabPagoAyu" placeholder="0" inputmode="decimal">
+      </div>
+    </div>
+
+    <!-- Pago atrasado -->
+    <div class="field-row">
+      <div class="field"><label>Pago atrasado (opcional)</label>
+        <input type="number" id="trabPagoAtras" placeholder="0" inputmode="decimal">
+      </div>
+      <div class="field"><label>¿De qué?</label>
+        <input type="text" id="trabPagoAtrasNota" placeholder="ej. morros de ayer">
       </div>
     </div>
 
@@ -509,6 +553,21 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="editor-actions">
       <button class="btn btn-primary" style="flex:1" onclick="guardarTrabajo()">Guardar trabajo</button>
       <button class="btn btn-cancel" onclick="closeTrabModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PENDIENTE -->
+<div class="modal" id="modalPendiente" onclick="closePendienteBg(event)">
+  <div class="modal-sheet">
+    <div class="modal-title">📌 Agregar cuenta pendiente</div>
+    <div class="field"><label>¿Quién debe?</label><input type="text" id="pendQuien" placeholder="ej. Gre"></div>
+    <div class="field"><label>Monto</label><input type="number" id="pendMonto" placeholder="0" inputmode="decimal"></div>
+    <div class="field"><label>Concepto (opcional)</label><input type="text" id="pendConcepto" placeholder="ej. cobro del Duventus del lunes"></div>
+    <div class="field"><label>Fecha</label><input type="date" id="pendFecha"></div>
+    <div class="editor-actions">
+      <button class="btn btn-primary" style="flex:1" onclick="guardarPendiente()">Guardar</button>
+      <button class="btn btn-cancel" onclick="closePendiente()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1764,8 +1823,8 @@ function updateWeekHeader(){
 function renderResumenSemana(){
   let cobrado=0,pagos=0;
   trabajos.forEach(t=>{
-    cobrado+=parseFloat(t.cobrado)||0;
-    pagos+=(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0);
+    cobrado+=parseFloat(t.total)||parseFloat(t.cobrado)||0;
+    pagos+=(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0)+(parseFloat(t.pago_atrasado)||0);
   });
   document.getElementById('tCobrado').textContent='$'+cobrado.toLocaleString();
   document.getElementById('tPagos').textContent='$'+pagos.toLocaleString();
@@ -1796,14 +1855,18 @@ function renderSemana(){
 
 function buildTrabajoCard(t){
   const card=document.createElement('div');card.className='item';
-  const conceptos=Array.isArray(t.conceptos)?t.conceptos:(JSON.parse(t.conceptos||'[]'));
-  const concSummary=conceptos.map(x=>x.concepto+(x.cantidad>1?' x'+x.cantidad:'')).join(', ');
-  const fp={efectivo:'💵 Efectivo',transferencia:'🏦 Transfer',tarjeta:'💳 Tarjeta',local:'🏪 Local'}[t.forma_pago]||t.forma_pago;
+  const desg=Array.isArray(t.desglose)?t.desglose:(JSON.parse(t.desglose||'[]'));
+  const desgSummary=desg.length?desg.map(x=>x.nombre+' $'+(parseFloat(x.monto)||0).toLocaleString()).join(' · '):'sin desglose';
+  const total=parseFloat(t.total)||parseFloat(t.cobrado)||0;
+  const fpMap={efectivo:'💵 Efectivo',transferencia:'🏦 Transfer a '+(t.usuario||'mí'),tarjeta:'💳 Tarjeta oficina',cobra_otro:'👤 Cobra '+(t.quien_cobra||'otro'),local:'🏪 Local'};
+  const fp=fpMap[t.forma_pago]||t.forma_pago;
+  const facturaTag=t.con_factura?'<span class="tag" style="color:var(--orange)">+factura 8%</span>':'';
+  const ayuNom=t.ayudante_nombre||t.ayudante||'';
   const main=document.createElement('div');main.className='item-main';
   main.innerHTML='<div class="item-info">'+
-    '<div class="item-model">👷 '+esc(t.cuadrilla)+(t.ayudante?' + '+esc(t.ayudante):'')+'</div>'+
-    '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+esc(concSummary||'sin conceptos')+'</div>'+
-    '<div class="item-meta"><span class="tag">'+fp+'</span><span class="tag" style="color:var(--green)">Cobrado $'+(parseFloat(t.cobrado)||0).toLocaleString()+'</span></div>'+
+    '<div class="item-model">👷 '+esc(t.cuadrilla)+(ayuNom?' + '+esc(ayuNom):'')+'</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+esc(desgSummary)+'</div>'+
+    '<div class="item-meta"><span class="tag">'+fp+'</span>'+facturaTag+'<span class="tag" style="color:var(--green)">Total $'+total.toLocaleString()+'</span></div>'+
     (t.nota?'<div style="font-size:10px;color:var(--muted);margin-top:3px;font-style:italic">'+esc(t.nota)+'</div>':'')+
     '</div>'+
     '<div style="text-align:right"><div style="font-size:10px;color:var(--orange)">Téc $'+(parseFloat(t.pago_tecnico)||0)+'</div><div style="font-size:10px;color:var(--orange)">Ayu $'+(parseFloat(t.pago_ayudante)||0)+'</div></div>';
@@ -1849,17 +1912,32 @@ async function delTrabajo(id){
 function openTrabajoModal(){
   document.getElementById('trabFecha').value=fmtFecha(new Date());
   document.getElementById('trabCuadrilla').value='Alan';
-  document.getElementById('trabCobrado').value='';
-  document.getElementById('trabNota').value='';
+  document.getElementById('trabFactura').checked=false;
   document.getElementById('trabFormaPago').value='efectivo';
+  document.getElementById('trabQuienCobra').value='';
+  document.getElementById('trabPagoTec').value='';
+  document.getElementById('trabPagoAyu').value='';
+  document.getElementById('trabPagoAtras').value='';
+  document.getElementById('trabPagoAtrasNota').value='';
+  document.getElementById('trabNota').value='';
   refreshAyudanteSelect();
-  document.getElementById('conceptosList').innerHTML='';
-  addConceptoRow();
-  recalcPagos();
+  toggleQuienCobra();
+  // desglose inicial con renglones comunes
+  document.getElementById('desgloseList').innerHTML='';
+  addDesgloseRow('Equipo / instalación','');
+  addDesgloseRow('Brakes','');
+  addDesgloseRow('Cable','');
+  addDesgloseRow('Base','');
+  recalcTrabajo();
   document.getElementById('modalTrabajo').classList.add('open');
 }
 function closeTrabModal(){document.getElementById('modalTrabajo').classList.remove('open');}
 function closeTrabModalBg(e){if(e.target===document.getElementById('modalTrabajo'))closeTrabModal();}
+
+function toggleQuienCobra(){
+  const fp=document.getElementById('trabFormaPago').value;
+  document.getElementById('quienCobraWrap').style.display=(fp==='cobra_otro')?'flex':'none';
+}
 
 function refreshAyudanteSelect(){
   const sel=document.getElementById('trabAyudante');
@@ -1875,83 +1953,84 @@ function addAyudantePrompt(){
   document.getElementById('trabAyudante').value=nombre;
 }
 
-function addConceptoRow(){
-  const cont=document.getElementById('conceptosList');
+// ── DESGLOSE ──
+function addDesgloseRow(nombre,monto){
+  const cont=document.getElementById('desgloseList');
   const row=document.createElement('div');
-  row.className='concepto-row';
+  row.className='desglose-row';
   row.style.cssText='display:flex;gap:6px;align-items:center';
-  const sel=document.createElement('select');sel.style.flex='1';
-  CONCEPTOS.forEach(con=>{const o=document.createElement('option');o.value=con;o.textContent=con;sel.appendChild(o);});
-  sel.addEventListener('change',recalcPagos);
-  const qty=document.createElement('input');qty.type='number';qty.value='1';qty.min='1';qty.style.width='52px';qty.className='concepto-qty';
-  qty.addEventListener('input',recalcPagos);
+  const inNom=document.createElement('input');inNom.type='text';inNom.className='desg-nom';inNom.placeholder='concepto';inNom.value=nombre||'';inNom.style.flex='1';
+  const inMon=document.createElement('input');inMon.type='number';inMon.className='desg-mon';inMon.placeholder='0';inMon.value=monto||'';inMon.inputMode='decimal';inMon.style.width='90px';
+  inMon.addEventListener('input',recalcTrabajo);
   const del=document.createElement('button');del.className='qty-btn';del.textContent='×';del.style.cssText='width:34px;height:36px;border:1px solid var(--border);border-radius:7px;background:var(--bg)';
-  del.addEventListener('click',()=>{row.remove();recalcPagos();});
-  row.appendChild(sel);row.appendChild(qty);row.appendChild(del);
+  del.addEventListener('click',()=>{row.remove();recalcTrabajo();});
+  row.appendChild(inNom);row.appendChild(inMon);row.appendChild(del);
   cont.appendChild(row);
 }
-
-function leerConceptos(){
-  const rows=document.querySelectorAll('#conceptosList .concepto-row');
+function leerDesglose(){
+  const rows=document.querySelectorAll('#desgloseList .desglose-row');
   const out=[];
   rows.forEach(r=>{
-    const con=r.querySelector('select').value;
-    const cant=parseInt(r.querySelector('.concepto-qty').value)||1;
-    out.push({concepto:con,cantidad:cant});
+    const nombre=r.querySelector('.desg-nom').value.trim();
+    const monto=parseFloat(r.querySelector('.desg-mon').value)||0;
+    if(nombre||monto)out.push({nombre:nombre||'(sin nombre)',monto});
   });
   return out;
 }
 
-function recalcPagos(){
-  const cuad=document.getElementById('trabCuadrilla').value;
-  const grupo=grupoDe(cuad);
-  const conceptos=leerConceptos();
-  let tec=0,ayu=0;
-  conceptos.forEach(x=>{
-    const t=tarifas[x.concepto];
-    if(t){
-      tec+=(t[grupo]?t[grupo].monto:0)*x.cantidad;
-      ayu+=(t.ayudante?t.ayudante.monto:0)*x.cantidad;
-    }
-  });
-  document.getElementById('calcTecnico').textContent='$'+tec.toLocaleString();
-  document.getElementById('calcAyudante').textContent='$'+ayu.toLocaleString();
-  return {tec,ayu,conceptos};
+function recalcTrabajo(){
+  const desg=leerDesglose();
+  const subtotal=desg.reduce((s,x)=>s+x.monto,0);
+  const factura=document.getElementById('trabFactura').checked;
+  const iva=factura?subtotal*0.08:0;
+  const total=subtotal+iva;
+  document.getElementById('trabSubtotal').textContent='$'+subtotal.toLocaleString();
+  document.getElementById('trabIvaRow').style.display=factura?'flex':'none';
+  document.getElementById('trabIva').textContent='$'+iva.toLocaleString(undefined,{maximumFractionDigits:2});
+  document.getElementById('trabTotal').textContent='$'+total.toLocaleString(undefined,{maximumFractionDigits:2});
+  // sugerencia de pago a técnico según tarifas (informativa)
+  return {desg,subtotal,iva,total};
 }
 
-// recalc when cuadrilla changes
-document.addEventListener('change',function(e){
-  if(e.target&&e.target.id==='trabCuadrilla')recalcPagos();
-});
+// Sugerencia de pago según conceptos detectados (heurística simple por nombre)
+function actualizarSugerenciaTecnico(){
+  // dejamos la sugerencia vacía: el pago es manual; mostramos hint genérico
+  document.getElementById('sugTecnico').textContent='(manual)';
+}
 
 async function guardarTrabajo(){
   const fecha=document.getElementById('trabFecha').value;
   if(!fecha){alert('Selecciona la fecha');return;}
   const cuadrilla=document.getElementById('trabCuadrilla').value;
   const ayudante=document.getElementById('trabAyudante').value;
-  const {tec,ayu,conceptos}=recalcPagos();
-  if(!conceptos.length){alert('Agrega al menos un concepto');return;}
-  const cobrado=parseFloat(document.getElementById('trabCobrado').value)||0;
+  const {desg,subtotal,iva,total}=recalcTrabajo();
+  if(!desg.length){alert('Agrega al menos un renglón al desglose');return;}
+  const factura=document.getElementById('trabFactura').checked;
   const forma=document.getElementById('trabFormaPago').value;
+  const quienCobra=(forma==='cobra_otro')?document.getElementById('trabQuienCobra').value.trim():'';
+  const pagoTec=parseFloat(document.getElementById('trabPagoTec').value)||0;
+  const pagoAyu=parseFloat(document.getElementById('trabPagoAyu').value)||0;
+  const pagoAtras=parseFloat(document.getElementById('trabPagoAtras').value)||0;
+  const pagoAtrasNota=document.getElementById('trabPagoAtrasNota').value.trim();
   const nota=document.getElementById('trabNota').value.trim();
-  // semana segun la fecha elegida
   const fd=new Date(fecha+'T12:00:00');
-  const hoy=new Date();hoy.setHours(0,0,0,0);
   const day=(fd.getDay()+6)%7;
   const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
   const sid=fmtFecha(lunes);
   try{
     const rows=await api('trabajos',{method:'POST',body:JSON.stringify({
-      fecha,semana:sid,cuadrilla,ayudante,
-      conceptos:JSON.stringify(conceptos),
-      cobrado,forma_pago:forma,
-      pago_tecnico:tec,pago_ayudante:ayu,
+      fecha,semana:sid,cuadrilla,ayudante,ayudante_nombre:ayudante,
+      desglose:JSON.stringify(desg),
+      con_factura:factura,subtotal,total,
+      cobrado:total,
+      forma_pago:forma,quien_cobra:quienCobra,
+      pago_tecnico:pagoTec,pago_ayudante:pagoAyu,
+      pago_atrasado:pagoAtras,pago_atrasado_nota:pagoAtrasNota,
       nota,usuario:currentUser||''
     })});
     if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
     closeTrabModal();
     showToast('Trabajo guardado ✓');
-    // si el trabajo cae en la semana que veo, recargar
     if(sid===semanaId(semanaOffset)){trabajos.push(rows[0]);renderSemana();renderResumenSemana();}
     else{showToast('Guardado en otra semana');}
   }catch(e){showToast('Error al guardar',true);}
@@ -1962,11 +2041,14 @@ function switchTrabTab(t){
   trabTab=t;
   document.getElementById('secSemana').style.display=t==='semana'?'block':'none';
   document.getElementById('secCorte').style.display=t==='corte'?'block':'none';
+  document.getElementById('secPend').style.display=t==='pendientes'?'block':'none';
   document.getElementById('secTarifas').style.display=t==='tarifas'?'block':'none';
   document.getElementById('tabSemana').className='tab'+(t==='semana'?' active':'');
   document.getElementById('tabCorte').className='tab'+(t==='corte'?' active':'');
+  document.getElementById('tabPend').className='tab'+(t==='pendientes'?' active':'');
   document.getElementById('tabTarifas').className='tab'+(t==='tarifas'?' active':'');
   if(t==='corte')renderCorte();
+  if(t==='pendientes')loadPendientes();
   if(t==='tarifas')loadTarifas();
 }
 
@@ -1974,40 +2056,145 @@ function switchTrabTab(t){
 function renderCorte(){
   const list=document.getElementById('listCorte');
   if(!trabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.</div>';return;}
-  let cobrado=0,pagoTec=0,pagoAyu=0;
-  const porTecnico={},porAyudante={},porForma={efectivo:0,transferencia:0,tarjeta:0,local:0};
+  let cobrado=0,pagoTec=0,pagoAyu=0,pagoAtras=0;
+  const porTecnico={},porAyudante={};
+  const porForma={efectivo:0,transferencia:0,tarjeta:0,cobra_otro:0,local:0};
+  const porCobrador={};
   trabajos.forEach(t=>{
-    const c=parseFloat(t.cobrado)||0;
-    cobrado+=c;
+    const tot=parseFloat(t.total)||parseFloat(t.cobrado)||0;
+    cobrado+=tot;
     pagoTec+=parseFloat(t.pago_tecnico)||0;
     pagoAyu+=parseFloat(t.pago_ayudante)||0;
+    pagoAtras+=parseFloat(t.pago_atrasado)||0;
     porTecnico[t.cuadrilla]=(porTecnico[t.cuadrilla]||0)+(parseFloat(t.pago_tecnico)||0);
-    if(t.ayudante)porAyudante[t.ayudante]=(porAyudante[t.ayudante]||0)+(parseFloat(t.pago_ayudante)||0);
-    if(porForma[t.forma_pago]!==undefined)porForma[t.forma_pago]+=c;
+    const ayuNom=t.ayudante_nombre||t.ayudante;
+    if(ayuNom)porAyudante[ayuNom]=(porAyudante[ayuNom]||0)+(parseFloat(t.pago_ayudante)||0);
+    if(porForma[t.forma_pago]!==undefined)porForma[t.forma_pago]+=tot;
+    if(t.forma_pago==='cobra_otro'&&t.quien_cobra){porCobrador[t.quien_cobra]=(porCobrador[t.quien_cobra]||0)+tot;}
   });
-  const utilidad=cobrado-pagoTec-pagoAyu;
+  const utilidad=cobrado-pagoTec-pagoAyu-pagoAtras;
 
   list.innerHTML='';
-  // Resumen general
   list.appendChild(corteBlock('💰 Resumen general',[
     ['Total cobrado',cobrado,'var(--green)'],
     ['Pago a técnicos',pagoTec,'var(--orange)'],
     ['Pago a ayudantes',pagoAyu,'var(--orange)'],
+    ['Pagos atrasados',pagoAtras,'var(--orange)'],
     ['Utilidad empresa',utilidad,'var(--accent2)']
   ]));
-  // Por técnico
   const tecRows=Object.keys(porTecnico).map(k=>[k,porTecnico[k],'var(--text)']);
   if(tecRows.length)list.appendChild(corteBlock('👷 Pago por técnico',tecRows));
-  // Por ayudante
   const ayuRows=Object.keys(porAyudante).map(k=>[k,porAyudante[k],'var(--text)']);
   if(ayuRows.length)list.appendChild(corteBlock('🤝 Pago por ayudante',ayuRows));
-  // Por forma de pago
-  list.appendChild(corteBlock('💳 Cobrado por forma de pago',[
+  list.appendChild(corteBlock('💳 Cómo entró el dinero',[
     ['Efectivo',porForma.efectivo,'var(--text)'],
-    ['Transferencia',porForma.transferencia,'var(--text)'],
-    ['Tarjeta',porForma.tarjeta,'var(--text)'],
+    ['Transferencia a mí',porForma.transferencia,'var(--text)'],
+    ['Tarjeta oficina',porForma.tarjeta,'var(--text)'],
+    ['Lo cobra alguien más',porForma.cobra_otro,'var(--text)'],
     ['Dejado en local',porForma.local,'var(--text)']
   ]));
+  const cobRows=Object.keys(porCobrador).map(k=>[k,porCobrador[k],'#c084fc']);
+  if(cobRows.length)list.appendChild(corteBlock('👤 Por entregar (lo cobra cada quien)',cobRows));
+}
+
+// ── PENDIENTES (cuentas por cobrar) ──
+let pendientes=[];
+function openPendienteModal(){
+  document.getElementById('pendQuien').value='';
+  document.getElementById('pendMonto').value='';
+  document.getElementById('pendConcepto').value='';
+  document.getElementById('pendFecha').value=fmtFecha(new Date());
+  document.getElementById('modalPendiente').classList.add('open');
+}
+function closePendiente(){document.getElementById('modalPendiente').classList.remove('open');}
+function closePendienteBg(e){if(e.target===document.getElementById('modalPendiente'))closePendiente();}
+
+async function guardarPendiente(){
+  const quien=document.getElementById('pendQuien').value.trim();
+  const monto=parseFloat(document.getElementById('pendMonto').value)||0;
+  const concepto=document.getElementById('pendConcepto').value.trim();
+  const fecha=document.getElementById('pendFecha').value;
+  if(!quien||!monto){alert('Pon quién debe y el monto');return;}
+  const fd=new Date(fecha+'T12:00:00');
+  const day=(fd.getDay()+6)%7;
+  const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
+  try{
+    await api('pendientes',{method:'POST',body:JSON.stringify({
+      fecha,semana:fmtFecha(lunes),quien,monto,concepto,saldado:false,usuario:currentUser||''
+    })});
+    closePendiente();showToast('Pendiente agregado ✓');loadPendientes();
+  }catch(e){showToast('Error',true);}
+}
+
+async function loadPendientes(){
+  const list=document.getElementById('listPend');
+  list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    pendientes=await api('pendientes?select=*&order=saldado.asc,fecha.desc');
+    renderPendientes();
+  }catch(e){list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';}
+}
+
+function renderPendientes(){
+  const list=document.getElementById('listPend');
+  const activos=pendientes.filter(p=>!p.saldado);
+  const saldados=pendientes.filter(p=>p.saldado);
+  const totalDeben=activos.reduce((s,p)=>s+(parseFloat(p.monto)||0),0);
+  list.innerHTML='';
+  // Total
+  const tot=document.createElement('div');tot.className='item';tot.style.padding='12px 14px';
+  tot.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;font-weight:700">Total por cobrar</span><span style="font-family:var(--mono);font-size:20px;font-weight:600;color:var(--green)">$'+totalDeben.toLocaleString()+'</span></div>';
+  list.appendChild(tot);
+  if(!activos.length){const e=document.createElement('div');e.className='empty';e.textContent='Sin cuentas pendientes.';list.appendChild(e);}
+  activos.forEach(p=>list.appendChild(buildPendCard(p,false)));
+  if(saldados.length){
+    const h=document.createElement('div');h.className='marca-header';h.style.cssText='color:var(--muted);margin-top:10px';h.textContent='YA SALDADAS';
+    list.appendChild(h);
+    saldados.slice(0,20).forEach(p=>list.appendChild(buildPendCard(p,true)));
+  }
+}
+
+function buildPendCard(p,saldado){
+  const card=document.createElement('div');card.className='item';card.style.padding='10px 12px';
+  const d=new Date(p.fecha+'T12:00:00');
+  const fecha=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  card.style.opacity=saldado?'0.55':'1';
+  card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+    '<div style="flex:1"><div style="font-size:14px;font-weight:600'+(saldado?';text-decoration:line-through':'')+'">'+esc(p.quien)+'</div>'+
+    (p.concepto?'<div style="font-size:11px;color:var(--muted)">'+esc(p.concepto)+'</div>':'')+
+    '<div style="font-size:10px;color:var(--muted)">'+fecha+'</div></div>'+
+    '<div style="font-family:var(--mono);font-size:18px;font-weight:600;color:'+(saldado?'var(--muted)':'var(--green)')+'">$'+(parseFloat(p.monto)||0).toLocaleString()+'</div></div>';
+  const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;margin-top:8px';
+  if(!saldado){
+    const bSald=document.createElement('button');bSald.className='btn btn-batch-in';bSald.textContent='✓ Ya me pagó';bSald.style.flex='1';
+    bSald.onclick=()=>togglePendiente(p.id,true);
+    acts.appendChild(bSald);
+  }else{
+    const bRe=document.createElement('button');bRe.className='btn btn-ghost';bRe.textContent='↶ Reabrir';bRe.style.flex='1';
+    bRe.onclick=()=>togglePendiente(p.id,false);
+    acts.appendChild(bRe);
+  }
+  const bDel=document.createElement('button');bDel.className='btn btn-danger';bDel.textContent='🗑';
+  bDel.onclick=()=>delPendiente(p.id);
+  acts.appendChild(bDel);
+  card.appendChild(acts);
+  return card;
+}
+
+async function togglePendiente(id,saldado){
+  try{
+    await api('pendientes?id=eq.'+id,{method:'PATCH',body:JSON.stringify({saldado})});
+    const p=pendientes.find(x=>x.id===id);if(p)p.saldado=saldado;
+    renderPendientes();showToast(saldado?'Marcado como pagado ✓':'Reabierto');
+  }catch(e){showToast('Error',true);}
+}
+async function delPendiente(id){
+  if(!confirm('¿Eliminar esta cuenta?'))return;
+  try{
+    await api('pendientes?id=eq.'+id,{method:'DELETE'});
+    pendientes=pendientes.filter(x=>x.id!==id);
+    renderPendientes();showToast('Eliminado');
+  }catch(e){showToast('Error',true);}
 }
 function corteBlock(titulo,filas){
   const grp=document.createElement('div');grp.className='marca-group';
@@ -2029,11 +2216,12 @@ async function exportarTrabajos(){
     const rows=await api('trabajos?select=*&semana=eq.'+sid+'&order=fecha.asc');
     let csv='\uFEFF';
     csv+='TRABAJOS — Semana '+sid+'\n';
-    csv+='Fecha,Cuadrilla,Ayudante,Conceptos,Cobrado,Forma pago,Pago tecnico,Pago ayudante,Utilidad,Nota,Registro por\n';
+    csv+='Fecha,Cuadrilla,Ayudante,Desglose,Factura,Subtotal,Total,Forma pago,Quien cobra,Pago tecnico,Pago ayudante,Pago atrasado,Utilidad,Nota,Registro por\n';
     rows.forEach(t=>{
-      const con=(Array.isArray(t.conceptos)?t.conceptos:JSON.parse(t.conceptos||'[]')).map(x=>x.concepto+(x.cantidad>1?' x'+x.cantidad:'')).join('; ');
-      const util=(parseFloat(t.cobrado)||0)-(parseFloat(t.pago_tecnico)||0)-(parseFloat(t.pago_ayudante)||0);
-      csv+=[t.fecha,t.cuadrilla,t.ayudante||'',con,t.cobrado,t.forma_pago,t.pago_tecnico,t.pago_ayudante,util,t.nota||'',t.usuario||''].map(csvCell).join(',')+'\n';
+      const desg=(Array.isArray(t.desglose)?t.desglose:JSON.parse(t.desglose||'[]')).map(x=>x.nombre+' $'+(parseFloat(x.monto)||0)).join('; ');
+      const tot=parseFloat(t.total)||parseFloat(t.cobrado)||0;
+      const util=tot-(parseFloat(t.pago_tecnico)||0)-(parseFloat(t.pago_ayudante)||0)-(parseFloat(t.pago_atrasado)||0);
+      csv+=[t.fecha,t.cuadrilla,t.ayudante_nombre||t.ayudante||'',desg,t.con_factura?'Sí':'No',t.subtotal||0,tot,t.forma_pago,t.quien_cobra||'',t.pago_tecnico,t.pago_ayudante,t.pago_atrasado||0,util,t.nota||'',t.usuario||''].map(csvCell).join(',')+'\n';
     });
     const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
     const url=URL.createObjectURL(blob);
