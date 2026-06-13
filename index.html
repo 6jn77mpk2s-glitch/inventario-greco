@@ -390,7 +390,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     </div>
     <div class="controls" style="border-top:none;padding-top:0">
       <button class="btn btn-batch-in" onclick="openReponer()">📦 Reponer material</button>
-      <button class="btn btn-batch-tras" onclick="openCablePanel()">🧵 Control de cable</button>
+      <button class="btn btn-batch-tras" onclick="openCablePanel()">📋 Material en poder</button>
     </div>
     <div class="list" id="listTec"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
@@ -591,9 +591,9 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 <!-- MODAL CONTROL CABLE -->
 <div class="modal" id="modalCable" onclick="closeCableBg(event)">
   <div class="modal-sheet">
-    <div class="modal-title">🧵 Control de cable (cal. 12)</div>
-    <div style="font-size:12px;color:var(--muted);margin-top:-4px">Cada técnico tiene su saldo personal en metros</div>
-    <div id="cableLista" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="modal-title">📋 Material en poder de técnicos</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:-4px">Saldo acumulado de cada técnico. Reponer sube, registrar gasto baja.</div>
+    <div id="cableLista" style="display:flex;flex-direction:column;gap:12px"></div>
     <div class="editor-actions">
       <button class="btn btn-cancel" style="flex:1" onclick="closeCable()">Cerrar</button>
     </div>
@@ -2312,30 +2312,42 @@ async function confirmReponer(){
         destino:'interno',tecnico,motivo:'',sucursal_destino:'',usuario:currentUser||'',
         voltaje:'',ton:'',lote,fecha:fechaISO
       })});
+      // sumar al saldo acumulado del técnico
+      await ajustarMaterialTecnico(tecnico,it.nombre,it.cantidad);
     }
     showToast('Material repuesto ✓');
     loadTecnicos();
   }catch(e){showToast('Error al reponer',true);}
 }
 
-// ════════════════ CONTROL DE CABLE ════════════════
+// ════════════════ MATERIAL EN PODER (saldos por técnico) ════════════════
 let cableData=[];
+let matTecData=[];  // saldos de material por técnico
+
+async function ajustarMaterialTecnico(tecnico,material,delta){
+  try{
+    const f=await api('material_tecnicos?select=*&tecnico=eq.'+encodeURIComponent(tecnico)+'&material=eq.'+encodeURIComponent(material));
+    if(f.length){
+      const nuevo=Math.max(0,(parseFloat(f[0].cantidad)||0)+delta);
+      await api('material_tecnicos?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({cantidad:nuevo,updated_at:new Date().toISOString()})});
+    }else{
+      await api('material_tecnicos',{method:'POST',body:JSON.stringify({tecnico,material,cantidad:Math.max(0,delta)})});
+    }
+  }catch(e){}
+}
 
 async function openCablePanel(){
   document.getElementById('modalCable').classList.add('open');
   document.getElementById('cableLista').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
-    let rows=await api('cable_tecnicos?select=*');
-    // asegurar que existan los 4 técnicos
     const techs=['Alan','Eduardo','Henry','David'];
-    for(const t of techs){
-      if(!rows.find(r=>r.tecnico===t)){
-        await api('cable_tecnicos',{method:'POST',body:JSON.stringify({tecnico:t,metros:0})});
-      }
-    }
-    rows=await api('cable_tecnicos?select=*');
-    cableData=rows;
-    renderCablePanel();
+    // Cable
+    let rows=await api('cable_tecnicos?select=*');
+    for(const t of techs){if(!rows.find(r=>r.tecnico===t)){await api('cable_tecnicos',{method:'POST',body:JSON.stringify({tecnico:t,metros:0})});}}
+    cableData=await api('cable_tecnicos?select=*');
+    // Material balances
+    matTecData=await api('material_tecnicos?select=*');
+    renderMaterialPanel();
   }catch(e){
     document.getElementById('cableLista').innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
   }
@@ -2343,32 +2355,59 @@ async function openCablePanel(){
 function closeCable(){document.getElementById('modalCable').classList.remove('open');}
 function closeCableBg(e){if(e.target===document.getElementById('modalCable'))closeCable();}
 
-function renderCablePanel(){
+function renderMaterialPanel(){
   const cont=document.getElementById('cableLista');
   cont.innerHTML='';
   const techs=['Alan','Eduardo','Henry','David'];
   techs.forEach(t=>{
-    const row=cableData.find(r=>r.tecnico===t)||{tecnico:t,metros:0};
-    const m=parseFloat(row.metros)||0;
     const card=document.createElement('div');
     card.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px';
-    card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
-      '<div style="font-size:15px;font-weight:700">👷 '+t+'</div>'+
-      '<div style="font-family:var(--mono);font-size:20px;font-weight:600;color:'+(m<=20?'var(--red)':'var(--accent2)')+'">'+m+' m</div></div>';
-    const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
-    // Entregar rollo
-    const bRollo=document.createElement('button');bRollo.className='btn btn-batch-in';bRollo.textContent='+ Rollo 100m';bRollo.style.flex='1';
+    let html='<div style="font-size:15px;font-weight:700;margin-bottom:8px">👷 '+t+'</div>';
+    // Material balances
+    const mats=matTecData.filter(r=>r.tecnico===t && (parseFloat(r.cantidad)||0)!==0);
+    if(mats.length){
+      mats.forEach(r=>{
+        html+='<div class="tec-line" style="margin-bottom:3px"><span>'+esc(r.material)+'</span><span class="tec-line-qty">'+(parseFloat(r.cantidad)||0)+'</span></div>';
+      });
+    }else{
+      html+='<div style="font-size:11px;color:var(--muted);margin-bottom:4px">Sin material registrado</div>';
+    }
+    // Cable
+    const cab=cableData.find(r=>r.tecnico===t);
+    const m=parseFloat(cab?cab.metros:0)||0;
+    html+='<div class="tec-line" style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px"><span>🧵 Cable cal. 12</span><span class="tec-line-qty" style="color:'+(m<=20?'var(--red)':'var(--accent2)')+'">'+m+' m</span></div>';
+    card.innerHTML=html;
+    // Actions
+    const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:10px';
+    const bGastoMat=document.createElement('button');bGastoMat.className='btn btn-ghost';bGastoMat.textContent='− Gastó material';bGastoMat.style.flex='1';
+    bGastoMat.onclick=()=>registrarGastoMaterial(t);
+    const bRollo=document.createElement('button');bRollo.className='btn btn-batch-in';bRollo.textContent='+ Rollo 100m';
     bRollo.onclick=()=>entregarRollo(t);
-    // Registrar gastado
-    const bGasto=document.createElement('button');bGasto.className='btn btn-ghost';bGasto.textContent='− Gastó';bGasto.style.flex='1';
-    bGasto.onclick=()=>registrarGastoCable(t);
-    // Ajustar manual
-    const bSet=document.createElement('button');bSet.className='btn btn-cancel';bSet.textContent='Ajustar';
-    bSet.onclick=()=>ajustarCable(t);
-    acts.appendChild(bRollo);acts.appendChild(bGasto);acts.appendChild(bSet);
+    const bGastoCab=document.createElement('button');bGastoCab.className='btn btn-cancel';bGastoCab.textContent='− Cable';
+    bGastoCab.onclick=()=>registrarGastoCable(t);
+    acts.appendChild(bGastoMat);acts.appendChild(bRollo);acts.appendChild(bGastoCab);
     card.appendChild(acts);
     cont.appendChild(card);
   });
+}
+
+async function registrarGastoMaterial(tecnico){
+  const mats=matTecData.filter(r=>r.tecnico===tecnico && (parseFloat(r.cantidad)||0)>0);
+  if(!mats.length){alert('Este técnico no tiene material registrado');return;}
+  const lista=mats.map((r,i)=>(i+1)+'. '+r.material+' ('+(parseFloat(r.cantidad)||0)+')').join('\n');
+  const sel=prompt('¿Qué material gastó '+tecnico+'? Escribe el número:\n\n'+lista);
+  if(sel===null)return;
+  const idx=parseInt(sel)-1;
+  if(isNaN(idx)||idx<0||idx>=mats.length){alert('Opción inválida');return;}
+  const mat=mats[idx];
+  const g=prompt('¿Cuántos '+mat.material+' gastó?');
+  if(g===null)return;
+  const cant=parseInt(g);
+  if(isNaN(cant)||cant<=0){alert('Número inválido');return;}
+  await ajustarMaterialTecnico(tecnico,mat.material,-cant);
+  matTecData=await api('material_tecnicos?select=*');
+  renderMaterialPanel();
+  showToast('Registrado: -'+cant+' '+mat.material);
 }
 
 async function setCableMetros(tecnico,nuevos){
@@ -2379,27 +2418,21 @@ async function setCableMetros(tecnico,nuevos){
       await api('cable_tecnicos?id=eq.'+row.id,{method:'PATCH',body:JSON.stringify({metros:nuevos,updated_at:new Date().toISOString()})});
       row.metros=nuevos;
     }
-    renderCablePanel();
+    renderMaterialPanel();
   }catch(e){showToast('Error',true);}
 }
-
 async function entregarRollo(tecnico){
   const row=cableData.find(r=>r.tecnico===tecnico);
   const actual=parseFloat(row?row.metros:0)||0;
-  // descontar 1 rollo del inventario de materiales (Sur por defecto)
   try{
-    const q='materiales?select=*&sucursal=eq.sur&nombre=ilike.*cable*calibre*12*';
-    const f=await api(q);
-    if(f.length){
-      await api('materiales?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:Math.max(0,(parseInt(f[0].qty)||0)-1),updated_at:new Date().toISOString()})});
-    }
-  }catch(e){/* si no hay rollo en inventario, igual sumamos al técnico */}
+    const f=await api('materiales?select=*&sucursal=eq.sur&nombre=ilike.*cable*12*');
+    if(f.length){await api('materiales?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:Math.max(0,(parseInt(f[0].qty)||0)-1),updated_at:new Date().toISOString()})});}
+  }catch(e){}
   await setCableMetros(tecnico,actual+100);
   showToast('Rollo entregado a '+tecnico+' ✓');
 }
-
 async function registrarGastoCable(tecnico){
-  const g=prompt('¿Cuántos metros gastó '+tecnico+'?');
+  const g=prompt('¿Cuántos metros de cable gastó '+tecnico+'?');
   if(g===null)return;
   const metros=parseFloat(g);
   if(isNaN(metros)||metros<0){alert('Número inválido');return;}
@@ -2407,17 +2440,6 @@ async function registrarGastoCable(tecnico){
   const actual=parseFloat(row?row.metros:0)||0;
   await setCableMetros(tecnico,actual-metros);
   showToast('Registrado: -'+metros+'m');
-}
-
-async function ajustarCable(tecnico){
-  const row=cableData.find(r=>r.tecnico===tecnico);
-  const actual=parseFloat(row?row.metros:0)||0;
-  const v=prompt('Ajustar metros de cable de '+tecnico+' (valor exacto):',actual);
-  if(v===null)return;
-  const metros=parseFloat(v);
-  if(isNaN(metros)){alert('Número inválido');return;}
-  await setCableMetros(tecnico,metros);
-  showToast('Ajustado ✓');
 }
 
 </script>
