@@ -388,6 +388,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="cambiarDiaTec(1)">Día →</button>
       <button class="btn btn-ghost" onclick="loadTecnicos()">↻</button>
     </div>
+    <div class="controls" style="border-top:none;padding-top:0">
+      <button class="btn btn-batch-in" onclick="openReponer()">📦 Reponer material</button>
+      <button class="btn btn-batch-tras" onclick="openCablePanel()">🧵 Control de cable</button>
+    </div>
     <div class="list" id="listTec"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
 </div>
@@ -558,6 +562,40 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="editor-actions">
       <button class="btn btn-primary" style="flex:1" onclick="addMat()">Guardar</button>
       <button class="btn btn-cancel" onclick="closeModal('modalMat')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL REPONER MATERIAL -->
+<div class="modal" id="modalReponer" onclick="closeReponerBg(event)">
+  <div class="modal-sheet">
+    <div class="modal-title">📦 Reponer material a técnico</div>
+    <div class="field-row">
+      <div class="field"><label>Técnico</label>
+        <select id="repTecnico"><option>Alan</option><option>Eduardo</option><option>Henry</option><option>David</option></select>
+      </div>
+      <div class="field"><label>Sale de sucursal</label>
+        <select id="repSuc"></select>
+      </div>
+    </div>
+    <div class="field"><label>Fecha</label><input type="date" id="repFecha"></div>
+    <div class="field"><label>Cantidades a reponer</label></div>
+    <div id="repLista" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div class="editor-actions">
+      <button class="btn btn-primary" style="flex:1" onclick="confirmReponer()">Confirmar reposición</button>
+      <button class="btn btn-cancel" onclick="closeReponer()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONTROL CABLE -->
+<div class="modal" id="modalCable" onclick="closeCableBg(event)">
+  <div class="modal-sheet">
+    <div class="modal-title">🧵 Control de cable (cal. 12)</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:-4px">Cada técnico tiene su saldo personal en metros</div>
+    <div id="cableLista" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="editor-actions">
+      <button class="btn btn-cancel" style="flex:1" onclick="closeCable()">Cerrar</button>
     </div>
   </div>
 </div>
@@ -2205,6 +2243,181 @@ async function registrarMovLote(tipo,nombre,cantidad,destino,tecnico,motivo,sucD
       fecha:new Date().toISOString()
     })});
   }catch(e){}
+}
+
+
+// ════════════════ REPOSICIÓN DE MATERIAL A TÉCNICO ════════════════
+const MATERIALES_REPOSICION=[
+  'Breaker de ranura','Breaker de patas',
+  'Base 1 ton','Base 2 ton',
+  'Centro de carga 2 pastillas','Centro de carga 4 pastillas'
+];
+
+function openReponer(){
+  const sel=document.getElementById('repSuc');
+  sel.innerHTML='';
+  Object.keys(BRANCHES).forEach(b=>{const o=document.createElement('option');o.value=b;o.textContent=BRANCHES[b];if(b==='sur')o.selected=true;sel.appendChild(o);});
+  document.getElementById('repFecha').value=fechaLocalISO(new Date());
+  document.getElementById('repTecnico').value='Alan';
+  // construir lista de materiales con contador
+  const cont=document.getElementById('repLista');
+  cont.innerHTML='';
+  MATERIALES_REPOSICION.forEach((mat,i)=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px';
+    row.innerHTML='<div style="flex:1;font-size:12px;font-weight:600">'+mat+'</div>';
+    const qrow=document.createElement('div');qrow.style.cssText='display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:7px;overflow:hidden';
+    const bm=document.createElement('button');bm.className='qty-btn';bm.textContent='−';bm.style.cssText='width:36px;height:34px;font-size:18px';
+    const inp=document.createElement('input');inp.type='number';inp.id='rep-'+i;inp.value='0';inp.min='0';inp.style.cssText='width:48px;text-align:center;font-family:var(--mono);font-size:15px;background:none;border:none;color:var(--text);outline:none';
+    const bp=document.createElement('button');bp.className='qty-btn';bp.textContent='+';bp.style.cssText='width:36px;height:34px;font-size:18px';
+    bm.onclick=()=>{inp.value=Math.max(0,(parseInt(inp.value)||0)-1);};
+    bp.onclick=()=>{inp.value=(parseInt(inp.value)||0)+1;};
+    qrow.appendChild(bm);qrow.appendChild(inp);qrow.appendChild(bp);
+    row.appendChild(qrow);
+    cont.appendChild(row);
+  });
+  document.getElementById('modalReponer').classList.add('open');
+}
+function closeReponer(){document.getElementById('modalReponer').classList.remove('open');}
+function closeReponerBg(e){if(e.target===document.getElementById('modalReponer'))closeReponer();}
+
+async function confirmReponer(){
+  const tecnico=document.getElementById('repTecnico').value;
+  const suc=document.getElementById('repSuc').value;
+  const fecha=document.getElementById('repFecha').value;
+  const items=[];
+  MATERIALES_REPOSICION.forEach((mat,i)=>{
+    const cant=parseInt(document.getElementById('rep-'+i).value)||0;
+    if(cant>0)items.push({nombre:mat,cantidad:cant});
+  });
+  if(!items.length){alert('Pon al menos una cantidad');return;}
+  closeReponer();
+  showToast('Reponiendo...');
+  const lote='R'+Date.now();
+  const fechaISO=new Date(fecha+'T12:00:00').toISOString();
+  try{
+    for(const it of items){
+      // descontar del inventario de materiales (crear si no existe con 0 y dejar en 0)
+      const q='materiales?select=*&sucursal=eq.'+suc+'&nombre=eq.'+encodeURIComponent(it.nombre);
+      const f=await api(q);
+      if(f.length){
+        await api('materiales?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:Math.max(0,(parseInt(f[0].qty)||0)-it.cantidad),updated_at:new Date().toISOString()})});
+      }else{
+        // no existe en inventario; lo creamos en 0 para que quede el registro
+        await api('materiales',{method:'POST',body:JSON.stringify({sucursal:suc,nombre:it.nombre,qty:0,nota:''})});
+      }
+      // registrar como asignación a técnico (material), en la fecha elegida
+      await api('movimientos',{method:'POST',body:JSON.stringify({
+        sucursal:suc,tipo:'material',nombre:it.nombre,cantidad:-it.cantidad,
+        destino:'interno',tecnico,motivo:'',sucursal_destino:'',usuario:currentUser||'',
+        voltaje:'',ton:'',lote,fecha:fechaISO
+      })});
+    }
+    showToast('Material repuesto ✓');
+    loadTecnicos();
+  }catch(e){showToast('Error al reponer',true);}
+}
+
+// ════════════════ CONTROL DE CABLE ════════════════
+let cableData=[];
+
+async function openCablePanel(){
+  document.getElementById('modalCable').classList.add('open');
+  document.getElementById('cableLista').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    let rows=await api('cable_tecnicos?select=*');
+    // asegurar que existan los 4 técnicos
+    const techs=['Alan','Eduardo','Henry','David'];
+    for(const t of techs){
+      if(!rows.find(r=>r.tecnico===t)){
+        await api('cable_tecnicos',{method:'POST',body:JSON.stringify({tecnico:t,metros:0})});
+      }
+    }
+    rows=await api('cable_tecnicos?select=*');
+    cableData=rows;
+    renderCablePanel();
+  }catch(e){
+    document.getElementById('cableLista').innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
+  }
+}
+function closeCable(){document.getElementById('modalCable').classList.remove('open');}
+function closeCableBg(e){if(e.target===document.getElementById('modalCable'))closeCable();}
+
+function renderCablePanel(){
+  const cont=document.getElementById('cableLista');
+  cont.innerHTML='';
+  const techs=['Alan','Eduardo','Henry','David'];
+  techs.forEach(t=>{
+    const row=cableData.find(r=>r.tecnico===t)||{tecnico:t,metros:0};
+    const m=parseFloat(row.metros)||0;
+    const card=document.createElement('div');
+    card.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px';
+    card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<div style="font-size:15px;font-weight:700">👷 '+t+'</div>'+
+      '<div style="font-family:var(--mono);font-size:20px;font-weight:600;color:'+(m<=20?'var(--red)':'var(--accent2)')+'">'+m+' m</div></div>';
+    const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+    // Entregar rollo
+    const bRollo=document.createElement('button');bRollo.className='btn btn-batch-in';bRollo.textContent='+ Rollo 100m';bRollo.style.flex='1';
+    bRollo.onclick=()=>entregarRollo(t);
+    // Registrar gastado
+    const bGasto=document.createElement('button');bGasto.className='btn btn-ghost';bGasto.textContent='− Gastó';bGasto.style.flex='1';
+    bGasto.onclick=()=>registrarGastoCable(t);
+    // Ajustar manual
+    const bSet=document.createElement('button');bSet.className='btn btn-cancel';bSet.textContent='Ajustar';
+    bSet.onclick=()=>ajustarCable(t);
+    acts.appendChild(bRollo);acts.appendChild(bGasto);acts.appendChild(bSet);
+    card.appendChild(acts);
+    cont.appendChild(card);
+  });
+}
+
+async function setCableMetros(tecnico,nuevos){
+  nuevos=Math.max(0,nuevos);
+  try{
+    const row=cableData.find(r=>r.tecnico===tecnico);
+    if(row){
+      await api('cable_tecnicos?id=eq.'+row.id,{method:'PATCH',body:JSON.stringify({metros:nuevos,updated_at:new Date().toISOString()})});
+      row.metros=nuevos;
+    }
+    renderCablePanel();
+  }catch(e){showToast('Error',true);}
+}
+
+async function entregarRollo(tecnico){
+  const row=cableData.find(r=>r.tecnico===tecnico);
+  const actual=parseFloat(row?row.metros:0)||0;
+  // descontar 1 rollo del inventario de materiales (Sur por defecto)
+  try{
+    const q='materiales?select=*&sucursal=eq.sur&nombre=ilike.*cable*calibre*12*';
+    const f=await api(q);
+    if(f.length){
+      await api('materiales?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:Math.max(0,(parseInt(f[0].qty)||0)-1),updated_at:new Date().toISOString()})});
+    }
+  }catch(e){/* si no hay rollo en inventario, igual sumamos al técnico */}
+  await setCableMetros(tecnico,actual+100);
+  showToast('Rollo entregado a '+tecnico+' ✓');
+}
+
+async function registrarGastoCable(tecnico){
+  const g=prompt('¿Cuántos metros gastó '+tecnico+'?');
+  if(g===null)return;
+  const metros=parseFloat(g);
+  if(isNaN(metros)||metros<0){alert('Número inválido');return;}
+  const row=cableData.find(r=>r.tecnico===tecnico);
+  const actual=parseFloat(row?row.metros:0)||0;
+  await setCableMetros(tecnico,actual-metros);
+  showToast('Registrado: -'+metros+'m');
+}
+
+async function ajustarCable(tecnico){
+  const row=cableData.find(r=>r.tecnico===tecnico);
+  const actual=parseFloat(row?row.metros:0)||0;
+  const v=prompt('Ajustar metros de cable de '+tecnico+' (valor exacto):',actual);
+  if(v===null)return;
+  const metros=parseFloat(v);
+  if(isNaN(metros)){alert('Número inválido');return;}
+  await setCableMetros(tecnico,metros);
+  showToast('Ajustado ✓');
 }
 
 </script>
