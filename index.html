@@ -488,14 +488,14 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="field-row">
       <div class="field"><label>Fecha</label><input type="date" id="trabFecha"></div>
       <div class="field"><label>Cuadrilla</label>
-        <select id="trabCuadrilla"><option>Alan</option><option>Eduardo</option><option>Henry</option><option>David</option></select>
+        <select id="trabCuadrilla" onchange="recalcTrabajo()"><option>Alan</option><option>Eduardo</option><option>Henry</option><option>David</option></select>
       </div>
     </div>
 
     <!-- DESGLOSE DEL COBRO -->
     <div class="field"><label>Desglose del cobro al cliente</label></div>
     <div id="desgloseList" style="display:flex;flex-direction:column;gap:6px"></div>
-    <button class="btn btn-ghost" onclick="addDesgloseRow('','')" style="align-self:flex-start">+ Agregar renglón</button>
+    <button class="btn btn-ghost" onclick="addDesgloseRow()" style="align-self:flex-start">+ Agregar renglón</button>
 
     <!-- Factura -->
     <div style="display:flex;align-items:center;gap:10px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:10px 12px">
@@ -526,7 +526,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 
     <!-- Pago a técnico (manual con sugerencia) -->
     <div class="field"><label>Pago al técnico <span id="sugTecnico" style="color:var(--muted);font-size:10px"></span></label>
-      <input type="number" id="trabPagoTec" placeholder="0" inputmode="decimal">
+      <input type="number" id="trabPagoTec" placeholder="0" inputmode="decimal" oninput="this.dataset.touched=1">
     </div>
 
     <!-- Ayudante -->
@@ -538,7 +538,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
         </div>
       </div>
       <div class="field"><label>Pago ayudante</label>
-        <input type="number" id="trabPagoAyu" placeholder="0" inputmode="decimal">
+        <input type="number" id="trabPagoAyu" placeholder="0" inputmode="decimal" oninput="this.dataset.touched=1">
       </div>
     </div>
 
@@ -2000,25 +2000,39 @@ async function delTrabajo(id){
 }
 
 // ── MODAL NUEVO TRABAJO ──
+// Precios de venta al cliente (fijos)
+const PRECIOS_MATERIAL={
+  'brake':150,
+  'base_1':700,'base_2':800,
+  'centro_2':600,'centro_4':900,
+  'cable_metro':60
+};
+const CABLE_GRATIS_POR_EQUIPO=5;
+// Mapa de material de trabajo -> nombre en saldo del técnico
+const MAP_MATERIAL_SALDO={
+  'brake_patas':'Breaker de patas',
+  'brake_ranura':'Breaker de ranura',
+  'base_1':'Base 1 ton','base_2':'Base 2 ton',
+  'centro_2':'Centro de carga 2 pastillas','centro_4':'Centro de carga 4 pastillas'
+};
+
+let desgloseItems=[]; // [{tipo, ...campos, monto, nombreVisible, pagaTecnico, descuentaMaterial}]
+
 function openTrabajoModal(){
   document.getElementById('trabFecha').value=fmtFecha(new Date());
   document.getElementById('trabCuadrilla').value='Alan';
   document.getElementById('trabFactura').checked=false;
   document.getElementById('trabFormaPago').value='efectivo';
   document.getElementById('trabQuienCobra').value='';
-  document.getElementById('trabPagoTec').value='';
-  document.getElementById('trabPagoAyu').value='';
+  document.getElementById('trabPagoTec').value='';document.getElementById('trabPagoTec').dataset.touched='';
+  document.getElementById('trabPagoAyu').value='';document.getElementById('trabPagoAyu').dataset.touched='';
   document.getElementById('trabPagoAtras').value='';
   document.getElementById('trabPagoAtrasNota').value='';
   document.getElementById('trabNota').value='';
   refreshAyudanteSelect();
   toggleQuienCobra();
-  // desglose inicial con renglones comunes
-  document.getElementById('desgloseList').innerHTML='';
-  addDesgloseRow('Equipo / instalación','');
-  addDesgloseRow('Brakes','');
-  addDesgloseRow('Cable','');
-  addDesgloseRow('Base','');
+  desgloseItems=[];
+  renderDesglose();
   recalcTrabajo();
   document.getElementById('modalTrabajo').classList.add('open');
 }
@@ -2029,7 +2043,6 @@ function toggleQuienCobra(){
   const fp=document.getElementById('trabFormaPago').value;
   document.getElementById('quienCobraWrap').style.display=(fp==='cobra_otro')?'flex':'none';
 }
-
 function refreshAyudanteSelect(){
   const sel=document.getElementById('trabAyudante');
   sel.innerHTML='<option value="">— Sin ayudante —</option>';
@@ -2044,34 +2057,155 @@ function addAyudantePrompt(){
   document.getElementById('trabAyudante').value=nombre;
 }
 
-// ── DESGLOSE ──
-function addDesgloseRow(nombre,monto){
-  const cont=document.getElementById('desgloseList');
-  const row=document.createElement('div');
-  row.className='desglose-row';
-  row.style.cssText='display:flex;gap:6px;align-items:center';
-  const inNom=document.createElement('input');inNom.type='text';inNom.className='desg-nom';inNom.placeholder='concepto';inNom.value=nombre||'';inNom.style.flex='1';
-  const inMon=document.createElement('input');inMon.type='number';inMon.className='desg-mon';inMon.placeholder='0';inMon.value=monto||'';inMon.inputMode='decimal';inMon.style.width='90px';
-  inMon.addEventListener('input',recalcTrabajo);
-  const del=document.createElement('button');del.className='qty-btn';del.textContent='×';del.style.cssText='width:34px;height:36px;border:1px solid var(--border);border-radius:7px;background:var(--bg)';
-  del.addEventListener('click',()=>{row.remove();recalcTrabajo();});
-  row.appendChild(inNom);row.appendChild(inMon);row.appendChild(del);
-  cont.appendChild(row);
+// ── AGREGAR RENGLÓN: elegir tipo ──
+function addDesgloseRow(){
+  const tipos=[
+    '1. Equipo + instalación','2. Solo instalación','3. Servicio',
+    '4. Brake','5. Base','6. Centro de carga','7. Cable',
+    '8. Desinstalación','9. Otro'
+  ];
+  const sel=prompt('¿Qué se hizo? Escribe el número:\n\n'+tipos.join('\n'));
+  if(sel===null)return;
+  const n=parseInt(sel);
+  if(n===1)agregarEquipoInst(true);
+  else if(n===2)agregarEquipoInst(false);
+  else if(n===3)agregarServicio();
+  else if(n===4)agregarBrake();
+  else if(n===5)agregarBase();
+  else if(n===6)agregarCentro();
+  else if(n===7)agregarCable();
+  else if(n===8)agregarDesinstalacion();
+  else if(n===9)agregarOtro();
+  else alert('Opción inválida');
 }
-function leerDesglose(){
-  const rows=document.querySelectorAll('#desgloseList .desglose-row');
-  const out=[];
-  rows.forEach(r=>{
-    const nombre=r.querySelector('.desg-nom').value.trim();
-    const monto=parseFloat(r.querySelector('.desg-mon').value)||0;
-    if(nombre||monto)out.push({nombre:nombre||'(sin nombre)',monto});
+
+function pedirTon(conTres){
+  const ops=conTres?['1 ton','1.5 ton','2 ton','3 ton']:['1 ton','1.5 ton','2 ton'];
+  const sel=prompt('¿Tonelaje?\n\n'+ops.map((t,i)=>(i+1)+'. '+t).join('\n'));
+  if(sel===null)return null;
+  const i=parseInt(sel)-1;
+  if(isNaN(i)||i<0||i>=ops.length){alert('Opción inválida');return null;}
+  return ops[i];
+}
+
+function agregarEquipoInst(esEquipo){
+  const ton=pedirTon(true);if(!ton)return;
+  const p=prompt('Precio cobrado al cliente:');if(p===null)return;
+  const monto=parseFloat(p)||0;
+  desgloseItems.push({tipo:'instalacion',ton,esEquipo,monto,
+    nombreVisible:(esEquipo?'Equipo + instalación ':'Instalación ')+ton,
+    pagaConcepto:'Instalación '+ton, cuentaEquipo:true});
+  renderDesglose();recalcTrabajo();
+}
+function agregarServicio(){
+  const ton=pedirTon(false);if(!ton)return;
+  const p=prompt('Precio cobrado al cliente:');if(p===null)return;
+  desgloseItems.push({tipo:'servicio',ton,monto:parseFloat(p)||0,
+    nombreVisible:'Servicio '+ton, pagaConcepto:'Servicio '+ton});
+  renderDesglose();recalcTrabajo();
+}
+function agregarBrake(){
+  const t=prompt('¿Tipo de brake?\n\n1. De patas\n2. De ranura');
+  if(t===null)return;
+  const tipo=parseInt(t)===1?'patas':parseInt(t)===2?'ranura':null;
+  if(!tipo){alert('Opción inválida');return;}
+  const cant=parseInt(prompt('¿Cuántos brakes?')||'0')||0;
+  if(cant<=0){alert('Cantidad inválida');return;}
+  desgloseItems.push({tipo:'brake',subtipo:tipo,cantidad:cant,
+    monto:cant*PRECIOS_MATERIAL.brake,
+    nombreVisible:'Brake '+tipo+' x'+cant,
+    descuentaSaldo:MAP_MATERIAL_SALDO['brake_'+tipo],descuentaCant:cant});
+  renderDesglose();recalcTrabajo();
+}
+function agregarBase(){
+  const t=prompt('¿Base de qué tonelaje?\n\n1. 1 ton\n2. 2 ton');
+  if(t===null)return;
+  const ton=parseInt(t)===1?'1':parseInt(t)===2?'2':null;
+  if(!ton){alert('Opción inválida');return;}
+  const cant=parseInt(prompt('¿Cuántas bases?')||'0')||0;
+  if(cant<=0){alert('Cantidad inválida');return;}
+  const precio=PRECIOS_MATERIAL['base_'+ton];
+  desgloseItems.push({tipo:'base',subtipo:ton,cantidad:cant,monto:cant*precio,
+    nombreVisible:'Base '+ton+' ton x'+cant,
+    descuentaSaldo:MAP_MATERIAL_SALDO['base_'+ton],descuentaCant:cant});
+  renderDesglose();recalcTrabajo();
+}
+function agregarCentro(){
+  const t=prompt('¿Centro de cuántos servicios?\n\n1. 2 servicios\n2. 4 servicios');
+  if(t===null)return;
+  const sv=parseInt(t)===1?'2':parseInt(t)===2?'4':null;
+  if(!sv){alert('Opción inválida');return;}
+  const cant=parseInt(prompt('¿Cuántos centros?')||'0')||0;
+  if(cant<=0){alert('Cantidad inválida');return;}
+  const precio=PRECIOS_MATERIAL['centro_'+sv];
+  desgloseItems.push({tipo:'centro',subtipo:sv,cantidad:cant,monto:cant*precio,
+    nombreVisible:'Centro '+sv+' serv. x'+cant,
+    descuentaSaldo:MAP_MATERIAL_SALDO['centro_'+sv],descuentaCant:cant});
+  renderDesglose();recalcTrabajo();
+}
+function agregarCable(){
+  const m=prompt('¿Cuántos metros de cable se usaron en total?');
+  if(m===null)return;
+  const metros=parseFloat(m)||0;
+  if(metros<=0){alert('Metros inválidos');return;}
+  // los metros cobrables se calculan al recalc (dependen de # equipos)
+  desgloseItems.push({tipo:'cable',metros,monto:0,
+    nombreVisible:'Cable '+metros+'m',descuentaCableMetros:metros});
+  renderDesglose();recalcTrabajo();
+}
+function agregarDesinstalacion(){
+  const p=prompt('Precio cobrado por la desinstalación:');if(p===null)return;
+  desgloseItems.push({tipo:'desinstalacion',monto:parseFloat(p)||0,
+    nombreVisible:'Desinstalación',pagaConcepto:'Desinstalación'});
+  renderDesglose();recalcTrabajo();
+}
+function agregarOtro(){
+  const nom=prompt('¿Qué concepto?');if(!nom)return;
+  const p=prompt('Precio:');if(p===null)return;
+  desgloseItems.push({tipo:'otro',monto:parseFloat(p)||0,nombreVisible:nom.trim()});
+  renderDesglose();recalcTrabajo();
+}
+
+// Recalcula metros cobrables de cable según # de equipos
+function recalcCable(){
+  const numEquipos=desgloseItems.filter(d=>d.tipo==='instalacion'&&d.cuentaEquipo).length;
+  const gratis=numEquipos*CABLE_GRATIS_POR_EQUIPO;
+  desgloseItems.forEach(d=>{
+    if(d.tipo==='cable'){
+      const cobrables=Math.max(0,d.metros-gratis);
+      d.metrosCobrables=cobrables;
+      d.monto=cobrables*PRECIOS_MATERIAL.cable_metro;
+      d.nombreVisible='Cable '+d.metros+'m (cobra '+cobrables+'m, '+gratis+' gratis)';
+    }
   });
-  return out;
+}
+
+function renderDesglose(){
+  recalcCable();
+  const cont=document.getElementById('desgloseList');
+  cont.innerHTML='';
+  if(!desgloseItems.length){
+    cont.innerHTML='<div style="font-size:11px;color:var(--muted);padding:4px">Aún no agregas nada. Usa "+ Agregar renglón".</div>';
+    return;
+  }
+  desgloseItems.forEach((d,idx)=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px';
+    row.innerHTML='<div style="flex:1;font-size:12px;font-weight:600">'+esc(d.nombreVisible)+
+      (d.descuentaSaldo?'<div style="font-size:9px;color:var(--orange)">descuenta '+d.descuentaCant+' del técnico</div>':'')+
+      (d.descuentaCableMetros?'<div style="font-size:9px;color:var(--orange)">descuenta '+d.descuentaCableMetros+'m al técnico</div>':'')+
+      '</div>'+
+      '<div style="font-family:var(--mono);font-size:14px;color:var(--green)">$'+(d.monto||0).toLocaleString()+'</div>';
+    const del=document.createElement('button');del.textContent='×';del.style.cssText='width:30px;height:30px;border:1px solid rgba(239,68,68,.3);border-radius:6px;background:transparent;color:var(--red);cursor:pointer;font-size:18px';
+    del.onclick=()=>{desgloseItems.splice(idx,1);renderDesglose();recalcTrabajo();};
+    row.appendChild(del);
+    cont.appendChild(row);
+  });
 }
 
 function recalcTrabajo(){
-  const desg=leerDesglose();
-  const subtotal=desg.reduce((s,x)=>s+x.monto,0);
+  recalcCable();
+  const subtotal=desgloseItems.reduce((s,x)=>s+(x.monto||0),0);
   const factura=document.getElementById('trabFactura').checked;
   const iva=factura?subtotal*0.08:0;
   const total=subtotal+iva;
@@ -2079,14 +2213,24 @@ function recalcTrabajo(){
   document.getElementById('trabIvaRow').style.display=factura?'flex':'none';
   document.getElementById('trabIva').textContent='$'+iva.toLocaleString(undefined,{maximumFractionDigits:2});
   document.getElementById('trabTotal').textContent='$'+total.toLocaleString(undefined,{maximumFractionDigits:2});
-  // sugerencia de pago a técnico según tarifas (informativa)
-  return {desg,subtotal,iva,total};
-}
-
-// Sugerencia de pago según conceptos detectados (heurística simple por nombre)
-function actualizarSugerenciaTecnico(){
-  // dejamos la sugerencia vacía: el pago es manual; mostramos hint genérico
-  document.getElementById('sugTecnico').textContent='(manual)';
+  // Sugerencia de pago a técnico y ayudante según tarifas
+  const cuad=document.getElementById('trabCuadrilla').value;
+  const grupo=grupoDe(cuad);
+  let sugTec=0,sugAyu=0;
+  desgloseItems.forEach(d=>{
+    if(d.pagaConcepto&&tarifas[d.pagaConcepto]){
+      const t=tarifas[d.pagaConcepto];
+      sugTec+=(t[grupo]?t[grupo].monto:0);
+      sugAyu+=(t.ayudante?t.ayudante.monto:0);
+    }
+  });
+  // llenar campos si están vacíos o si el usuario no los ha tocado manualmente
+  const campoTec=document.getElementById('trabPagoTec');
+  const campoAyu=document.getElementById('trabPagoAyu');
+  if(!campoTec.dataset.touched)campoTec.value=sugTec||'';
+  if(!campoAyu.dataset.touched)campoAyu.value=sugAyu||'';
+  document.getElementById('sugTecnico').textContent=sugTec?'(sugerido $'+sugTec+')':'';
+  return {subtotal,iva,total};
 }
 
 async function guardarTrabajo(){
@@ -2094,8 +2238,9 @@ async function guardarTrabajo(){
   if(!fecha){alert('Selecciona la fecha');return;}
   const cuadrilla=document.getElementById('trabCuadrilla').value;
   const ayudante=document.getElementById('trabAyudante').value;
-  const {desg,subtotal,iva,total}=recalcTrabajo();
-  if(!desg.length){alert('Agrega al menos un renglón al desglose');return;}
+  recalcCable();
+  if(!desgloseItems.length){alert('Agrega al menos un renglón');return;}
+  const {subtotal,iva,total}=recalcTrabajo();
   const factura=document.getElementById('trabFactura').checked;
   const forma=document.getElementById('trabFormaPago').value;
   const quienCobra=(forma==='cobra_otro')?document.getElementById('trabQuienCobra').value.trim():'';
@@ -2104,6 +2249,8 @@ async function guardarTrabajo(){
   const pagoAtras=parseFloat(document.getElementById('trabPagoAtras').value)||0;
   const pagoAtrasNota=document.getElementById('trabPagoAtrasNota').value.trim();
   const nota=document.getElementById('trabNota').value.trim();
+  // desglose simple para guardar
+  const desgGuardar=desgloseItems.map(d=>({nombre:d.nombreVisible,monto:d.monto||0}));
   const fd=new Date(fecha+'T12:00:00');
   const day=(fd.getDay()+6)%7;
   const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
@@ -2111,20 +2258,41 @@ async function guardarTrabajo(){
   try{
     const rows=await api('trabajos',{method:'POST',body:JSON.stringify({
       fecha,semana:sid,cuadrilla,ayudante,ayudante_nombre:ayudante,
-      desglose:JSON.stringify(desg),
-      con_factura:factura,subtotal,total,
-      cobrado:total,
+      desglose:JSON.stringify(desgGuardar),
+      con_factura:factura,subtotal,total,cobrado:total,
       forma_pago:forma,quien_cobra:quienCobra,
       pago_tecnico:pagoTec,pago_ayudante:pagoAyu,
       pago_atrasado:pagoAtras,pago_atrasado_nota:pagoAtrasNota,
       nota,usuario:currentUser||''
     })});
+    // Descontar material del saldo del técnico de la cuadrilla
+    for(const d of desgloseItems){
+      if(d.descuentaSaldo&&d.descuentaCant>0){
+        await ajustarMaterialTecnico(cuadrilla,d.descuentaSaldo,-d.descuentaCant);
+      }
+      if(d.descuentaCableMetros>0){
+        await ajustarCableTecnico(cuadrilla,-d.descuentaCableMetros);
+      }
+    }
     if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
     closeTrabModal();
     showToast('Trabajo guardado ✓');
     if(sid===semanaId(semanaOffset)){trabajos.push(rows[0]);renderSemana();renderResumenSemana();}
     else{showToast('Guardado en otra semana');}
   }catch(e){showToast('Error al guardar',true);}
+}
+
+// Ajusta el saldo de cable del técnico (delta puede ser negativo)
+async function ajustarCableTecnico(tecnico,delta){
+  try{
+    const f=await api('cable_tecnicos?select=*&tecnico=eq.'+encodeURIComponent(tecnico));
+    if(f.length){
+      const nuevo=Math.max(0,(parseFloat(f[0].metros)||0)+delta);
+      await api('cable_tecnicos?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({metros:nuevo,updated_at:new Date().toISOString()})});
+    }else{
+      await api('cable_tecnicos',{method:'POST',body:JSON.stringify({tecnico,metros:Math.max(0,delta)})});
+    }
+  }catch(e){}
 }
 
 // ── TABS TRABAJOS ──
