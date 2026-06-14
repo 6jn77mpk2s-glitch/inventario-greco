@@ -227,6 +227,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .desglose-row input{font-family:var(--mono);font-size:13px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 9px;border-radius:7px;outline:none;}
 .desglose-row input:focus{border-color:var(--accent);}
 
+
+.dev-btn{margin-top:6px;background:transparent;border:1px solid rgba(34,197,94,.35);color:var(--green);font-family:var(--sans);font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;}
+.dev-btn:active{background:rgba(34,197,94,.1);}
+
 </style>
 </head>
 <body>
@@ -1448,9 +1452,11 @@ function renderMovimientos(){
       row.className='mov-row'+(isOut?' out':' in');
       const mio=(m.usuario===currentUser);
       const undoBtn=mio?'<button class="undo-btn" onclick="deshacerMovimiento('+m.id+')">↶ Deshacer</button>':'';
+      // Devolver: solo para salidas hacia técnico interno (cualquiera puede)
+      const devBtn=(m.destino==='interno'&&m.tecnico)?'<button class="dev-btn" onclick="devolverDesdeMov('+m.id+')">↩️ Devolver</button>':'';
       const espTag=(m.tipo==='aire'&&(m.voltaje||m.ton))?'<span class="tag">'+esc((m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||''))+'</span>':'';
       const loteTag=m.lote?'<span class="tag" style="background:rgba(168,85,247,.12);color:#c084fc">📦 lote</span>':'';
-      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span>'+espTag+loteTag+destLabel(m)+userTag+'<span class="tag">'+fecha+'</span></div>'+(m.motivo?'<div style="font-size:10px;color:var(--orange);margin-top:3px;font-style:italic">↩ '+esc(m.motivo)+'</div>':'')+undoBtn+'</div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
+      row.innerHTML='<div class="mov-info"><div class="mov-name">'+esc(m.nombre)+'</div><div class="mov-meta"><span class="tag">'+(m.tipo==='aire'?'🌬 aire':'📦 material')+'</span>'+espTag+loteTag+destLabel(m)+userTag+'<span class="tag">'+fecha+'</span></div>'+(m.motivo?'<div style="font-size:10px;color:var(--orange);margin-top:3px;font-style:italic">↩ '+esc(m.motivo)+'</div>':'')+'<div style="display:flex;gap:6px;flex-wrap:wrap">'+undoBtn+devBtn+'</div></div><div class="mov-qty">'+(isOut?'':'+')+m.cantidad+'</div>';
       grp.appendChild(row);
     });
     list.appendChild(grp);
@@ -1622,6 +1628,48 @@ async function exportarTodo(){
   }catch(e){showToast('Error al exportar',true);}
 }
 function csvCell(v){const s=String(v==null?'':v);return '"'+s.replace(/"/g,'""')+'"';}
+
+// ── DEVOLVER (parcial o total) DESDE UN MOVIMIENTO ──
+async function devolverDesdeMov(id){
+  const m=movimientos.find(x=>x.id===id);
+  if(!m)return;
+  const salieron=Math.abs(m.cantidad);
+  const g=prompt('¿Cuántos devuelve '+(m.tecnico||'el técnico')+'? (salieron '+salieron+')',String(salieron));
+  if(g===null)return;
+  const cant=parseInt(g);
+  if(isNaN(cant)||cant<=0){alert('Número inválido');return;}
+  if(cant>salieron){alert('No puede devolver más de lo que salió ('+salieron+')');return;}
+  try{
+    // Sumar de vuelta al inventario de la sucursal del movimiento original
+    await sumarStock(m.sucursal,m.tipo,m.nombre,cant,m);
+    // Registrar movimiento de devolución (entrada, hoy, con el técnico)
+    await api('movimientos',{method:'POST',body:JSON.stringify({
+      sucursal:m.sucursal,tipo:m.tipo,nombre:m.nombre,cantidad:cant,
+      destino:'devolucion',tecnico:m.tecnico||'',motivo:'Devolución de '+(m.tecnico||'técnico'),
+      sucursal_destino:'',usuario:currentUser||'',
+      voltaje:m.voltaje||'',ton:m.ton||'',lote:'',fecha:new Date().toISOString()
+    })});
+    showToast(cant+' devuelto(s) por '+(m.tecnico||'técnico')+' ✓');
+    loadMovimientos();loadGlobalTotal();
+  }catch(e){showToast('Error al devolver',true);}
+}
+
+// Suma stock al inventario (identifica aire por modelo+volt+ton)
+async function sumarStock(suc,tipo,nombre,cantidad,m){
+  const tabla=tipo==='aire'?'inventario':'materiales';
+  let q;
+  if(tipo==='aire'){
+    q=tabla+'?select=*&sucursal=eq.'+suc+'&modelo=eq.'+encodeURIComponent(nombre);
+    if(m&&m.voltaje)q+='&voltaje=eq.'+encodeURIComponent(m.voltaje);
+    if(m&&m.ton)q+='&ton=eq.'+encodeURIComponent(m.ton);
+  }else{
+    q=tabla+'?select=*&sucursal=eq.'+suc+'&nombre=eq.'+encodeURIComponent(nombre);
+  }
+  const f=await api(q);
+  if(f.length){
+    await api(tabla+'?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:(parseInt(f[0].qty)||0)+cantidad,updated_at:new Date().toISOString()})});
+  }
+}
 
 // ── DESHACER MOVIMIENTO ──
 async function deshacerMovimiento(id){
