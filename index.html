@@ -231,6 +231,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .dev-btn{margin-top:6px;background:transparent;border:1px solid rgba(34,197,94,.35);color:var(--green);font-family:var(--sans);font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;}
 .dev-btn:active{background:rgba(34,197,94,.1);}
 
+
+.ui-opt{width:100%;text-align:left;padding:15px 16px;font-size:15px;font-weight:600;background:var(--card);border:1.5px solid var(--border);border-radius:11px;color:var(--text);cursor:pointer;transition:all .12s;font-family:var(--sans);}
+.ui-opt:active{background:var(--accent);border-color:var(--accent);transform:scale(.98);}
+
 </style>
 </head>
 <body>
@@ -760,6 +764,25 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   </div>
 </div>
 
+<!-- PICKER / INPUT REUTILIZABLE -->
+<div class="modal" id="uiPicker" onclick="uiPickerBg(event)" style="z-index:200">
+  <div class="modal-sheet" style="max-width:420px">
+    <div class="modal-title" id="uiPickerTitle" style="font-size:17px"></div>
+    <div id="uiPickerSub" style="font-size:12px;color:var(--muted);margin-top:-4px;display:none"></div>
+    <!-- Opciones -->
+    <div id="uiPickerOpts" style="display:flex;flex-direction:column;gap:8px"></div>
+    <!-- Input numérico/texto -->
+    <div id="uiPickerInputWrap" style="display:none;flex-direction:column;gap:10px">
+      <input id="uiPickerInput" style="font-family:var(--mono);font-size:20px;text-align:center;background:var(--bg);border:1.5px solid var(--accent);color:var(--text);padding:14px;border-radius:10px;outline:none" onkeydown="if(event.key==='Enter')uiPickerConfirm()">
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1;padding:13px" onclick="uiPickerConfirm()">Aceptar</button>
+        <button class="btn btn-cancel" style="padding:13px" onclick="uiPickerCancel()">Cancelar</button>
+      </div>
+    </div>
+    <button id="uiPickerCancelOpts" class="btn btn-cancel" style="margin-top:4px" onclick="uiPickerCancel()">Cancelar</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -811,6 +834,62 @@ async function api(path,opts={}){
 // ── HELPERS ──
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function adj(id,d){const el=document.getElementById(id);el.value=Math.max(0,(parseInt(el.value)||0)+d);}
+// ════════════ UI PICKER REUTILIZABLE (reemplaza prompt) ════════════
+let _uiPickerResolve=null;
+
+// Menú de opciones. opciones = [{label, value, color}]. Devuelve value o null.
+function uiChoose(titulo, opciones, sub){
+  return new Promise(resolve=>{
+    _uiPickerResolve=resolve;
+    document.getElementById('uiPickerTitle').textContent=titulo;
+    const subEl=document.getElementById('uiPickerSub');
+    if(sub){subEl.style.display='block';subEl.textContent=sub;}else{subEl.style.display='none';}
+    document.getElementById('uiPickerInputWrap').style.display='none';
+    document.getElementById('uiPickerCancelOpts').style.display='block';
+    const cont=document.getElementById('uiPickerOpts');
+    cont.style.display='flex';
+    cont.innerHTML='';
+    opciones.forEach(op=>{
+      const b=document.createElement('button');
+      b.className='ui-opt';
+      if(op.color)b.style.borderColor=op.color;
+      b.innerHTML=op.label;
+      b.onclick=()=>{closeUiPicker();resolve(op.value);};
+      cont.appendChild(b);
+    });
+    document.getElementById('uiPicker').classList.add('open');
+  });
+}
+
+// Captura de número o texto. Devuelve string o null.
+function uiInput(titulo, opts){
+  opts=opts||{};
+  return new Promise(resolve=>{
+    _uiPickerResolve=resolve;
+    document.getElementById('uiPickerTitle').textContent=titulo;
+    const subEl=document.getElementById('uiPickerSub');
+    if(opts.sub){subEl.style.display='block';subEl.textContent=opts.sub;}else{subEl.style.display='none';}
+    document.getElementById('uiPickerOpts').style.display='none';
+    document.getElementById('uiPickerCancelOpts').style.display='none';
+    document.getElementById('uiPickerInputWrap').style.display='flex';
+    const inp=document.getElementById('uiPickerInput');
+    inp.type=opts.tipo==='texto'?'text':'number';
+    inp.inputMode=opts.tipo==='texto'?'text':'decimal';
+    inp.placeholder=opts.placeholder||'';
+    inp.value=opts.valor!==undefined?opts.valor:'';
+    document.getElementById('uiPicker').classList.add('open');
+    setTimeout(()=>{inp.focus();inp.select();},100);
+  });
+}
+function uiPickerConfirm(){
+  const v=document.getElementById('uiPickerInput').value;
+  closeUiPicker();
+  if(_uiPickerResolve)_uiPickerResolve(v);
+}
+function uiPickerCancel(){closeUiPicker();if(_uiPickerResolve)_uiPickerResolve(null);}
+function uiPickerBg(e){if(e.target===document.getElementById('uiPicker'))uiPickerCancel();}
+function closeUiPicker(){document.getElementById('uiPicker').classList.remove('open');}
+
 function showToast(msg,err=false){
   const t=document.getElementById('toast');t.textContent=msg;
   t.className='toast'+(err?' err':'');t.classList.add('show');
@@ -1876,10 +1955,10 @@ function tarifaCell(con,grupo){
   return '<span class="tarifa-cell" onclick="editTarifa(\''+con+'\',\''+grupo+'\','+t.id+','+t.monto+')">$'+t.monto+'</span>';
 }
 async function editTarifa(con,grupo,id,actual){
-  const nuevo=prompt('Tarifa para "'+con+'" ('+grupo.replace('_','/')+'):',actual);
+  const nuevo=await uiInput('Tarifa: '+con,{tipo:'numero',valor:actual,sub:grupo.replace('_','/')});
   if(nuevo===null)return;
   const val=parseFloat(nuevo);
-  if(isNaN(val)){alert('Número inválido');return;}
+  if(isNaN(val)){showToast('Número inválido',true);return;}
   try{
     await api('tarifas?id=eq.'+id,{method:'PATCH',body:JSON.stringify({monto:val})});
     tarifas[con][grupo].monto=val;
@@ -2048,8 +2127,8 @@ function refreshAyudanteSelect(){
   sel.innerHTML='<option value="">— Sin ayudante —</option>';
   ayudantes.forEach(a=>{const o=document.createElement('option');o.value=a;o.textContent=a;sel.appendChild(o);});
 }
-function addAyudantePrompt(){
-  const n=prompt('Nombre del ayudante:');
+async function addAyudantePrompt(){
+  const n=await uiInput('Nombre del ayudante',{tipo:'texto',placeholder:'ej. Wicho'});
   if(!n)return;
   const nombre=n.trim();
   if(nombre&&!ayudantes.includes(nombre))ayudantes.push(nombre);
@@ -2058,111 +2137,118 @@ function addAyudantePrompt(){
 }
 
 // ── AGREGAR RENGLÓN: elegir tipo ──
-function addDesgloseRow(){
-  const tipos=[
-    '1. Equipo + instalación','2. Solo instalación','3. Servicio',
-    '4. Brake','5. Base','6. Centro de carga','7. Cable',
-    '8. Desinstalación','9. Otro'
-  ];
-  const sel=prompt('¿Qué se hizo? Escribe el número:\n\n'+tipos.join('\n'));
-  if(sel===null)return;
-  const n=parseInt(sel);
-  if(n===1)agregarEquipoInst(true);
-  else if(n===2)agregarEquipoInst(false);
-  else if(n===3)agregarServicio();
-  else if(n===4)agregarBrake();
-  else if(n===5)agregarBase();
-  else if(n===6)agregarCentro();
-  else if(n===7)agregarCable();
-  else if(n===8)agregarDesinstalacion();
-  else if(n===9)agregarOtro();
-  else alert('Opción inválida');
+async function addDesgloseRow(){
+  const tipo=await uiChoose('¿Qué se hizo?',[
+    {label:'🔧 Equipo + instalación',value:'eq_inst'},
+    {label:'🔩 Solo instalación',value:'solo_inst'},
+    {label:'🛠️ Servicio',value:'servicio'},
+    {label:'⚡ Brake',value:'brake'},
+    {label:'🔌 Base',value:'base'},
+    {label:'📦 Centro de carga',value:'centro'},
+    {label:'🧵 Cable',value:'cable'},
+    {label:'❌ Desinstalación',value:'desinst'},
+    {label:'➕ Otro',value:'otro'}
+  ]);
+  if(!tipo)return;
+  if(tipo==='eq_inst')await agregarEquipoInst(true);
+  else if(tipo==='solo_inst')await agregarEquipoInst(false);
+  else if(tipo==='servicio')await agregarServicio();
+  else if(tipo==='brake')await agregarBrake();
+  else if(tipo==='base')await agregarBase();
+  else if(tipo==='centro')await agregarCentro();
+  else if(tipo==='cable')await agregarCable();
+  else if(tipo==='desinst')await agregarDesinstalacion();
+  else if(tipo==='otro')await agregarOtro();
 }
 
-function pedirTon(conTres){
-  const ops=conTres?['1 ton','1.5 ton','2 ton','3 ton']:['1 ton','1.5 ton','2 ton'];
-  const sel=prompt('¿Tonelaje?\n\n'+ops.map((t,i)=>(i+1)+'. '+t).join('\n'));
-  if(sel===null)return null;
-  const i=parseInt(sel)-1;
-  if(isNaN(i)||i<0||i>=ops.length){alert('Opción inválida');return null;}
-  return ops[i];
+async function pedirTon(conTres){
+  const ops=conTres
+    ?[{label:'1 ton',value:'1 ton'},{label:'1.5 ton',value:'1.5 ton'},{label:'2 ton',value:'2 ton'},{label:'3 ton',value:'3 ton'}]
+    :[{label:'1 ton',value:'1 ton'},{label:'1.5 ton',value:'1.5 ton'},{label:'2 ton',value:'2 ton'}];
+  return await uiChoose('¿Tonelaje?',ops);
+}
+async function pedirNum(titulo,sub){
+  const v=await uiInput(titulo,{tipo:'numero',placeholder:'0',sub});
+  if(v===null)return null;
+  return parseFloat(v)||0;
 }
 
-function agregarEquipoInst(esEquipo){
-  const ton=pedirTon(true);if(!ton)return;
-  const p=prompt('Precio cobrado al cliente:');if(p===null)return;
-  const monto=parseFloat(p)||0;
+async function agregarEquipoInst(esEquipo){
+  const ton=await pedirTon(true);if(!ton)return;
+  const monto=await pedirNum('Precio cobrado al cliente',(esEquipo?'Equipo + instalación ':'Instalación ')+ton);
+  if(monto===null)return;
   desgloseItems.push({tipo:'instalacion',ton,esEquipo,monto,
     nombreVisible:(esEquipo?'Equipo + instalación ':'Instalación ')+ton,
     pagaConcepto:'Instalación '+ton, cuentaEquipo:true});
   renderDesglose();recalcTrabajo();
 }
-function agregarServicio(){
-  const ton=pedirTon(false);if(!ton)return;
-  const p=prompt('Precio cobrado al cliente:');if(p===null)return;
-  desgloseItems.push({tipo:'servicio',ton,monto:parseFloat(p)||0,
+async function agregarServicio(){
+  const ton=await pedirTon(false);if(!ton)return;
+  const monto=await pedirNum('Precio cobrado al cliente','Servicio '+ton);
+  if(monto===null)return;
+  desgloseItems.push({tipo:'servicio',ton,monto,
     nombreVisible:'Servicio '+ton, pagaConcepto:'Servicio '+ton});
   renderDesglose();recalcTrabajo();
 }
-function agregarBrake(){
-  const t=prompt('¿Tipo de brake?\n\n1. De patas\n2. De ranura');
-  if(t===null)return;
-  const tipo=parseInt(t)===1?'patas':parseInt(t)===2?'ranura':null;
-  if(!tipo){alert('Opción inválida');return;}
-  const cant=parseInt(prompt('¿Cuántos brakes?')||'0')||0;
-  if(cant<=0){alert('Cantidad inválida');return;}
+async function agregarBrake(){
+  const tipo=await uiChoose('¿Tipo de brake?',[
+    {label:'De patas',value:'patas'},{label:'De ranura',value:'ranura'}
+  ]);
+  if(!tipo)return;
+  const cant=await pedirNum('¿Cuántos brakes?','$150 c/u');
+  if(cant===null||cant<=0)return;
   desgloseItems.push({tipo:'brake',subtipo:tipo,cantidad:cant,
     monto:cant*PRECIOS_MATERIAL.brake,
     nombreVisible:'Brake '+tipo+' x'+cant,
     descuentaSaldo:MAP_MATERIAL_SALDO['brake_'+tipo],descuentaCant:cant});
   renderDesglose();recalcTrabajo();
 }
-function agregarBase(){
-  const t=prompt('¿Base de qué tonelaje?\n\n1. 1 ton\n2. 2 ton');
-  if(t===null)return;
-  const ton=parseInt(t)===1?'1':parseInt(t)===2?'2':null;
-  if(!ton){alert('Opción inválida');return;}
-  const cant=parseInt(prompt('¿Cuántas bases?')||'0')||0;
-  if(cant<=0){alert('Cantidad inválida');return;}
+async function agregarBase(){
+  const ton=await uiChoose('¿Base de qué tonelaje?',[
+    {label:'1 ton — $700',value:'1'},{label:'2 ton — $800',value:'2'}
+  ]);
+  if(!ton)return;
+  const cant=await pedirNum('¿Cuántas bases?','$'+PRECIOS_MATERIAL['base_'+ton]+' c/u');
+  if(cant===null||cant<=0)return;
   const precio=PRECIOS_MATERIAL['base_'+ton];
   desgloseItems.push({tipo:'base',subtipo:ton,cantidad:cant,monto:cant*precio,
     nombreVisible:'Base '+ton+' ton x'+cant,
     descuentaSaldo:MAP_MATERIAL_SALDO['base_'+ton],descuentaCant:cant});
   renderDesglose();recalcTrabajo();
 }
-function agregarCentro(){
-  const t=prompt('¿Centro de cuántos servicios?\n\n1. 2 servicios\n2. 4 servicios');
-  if(t===null)return;
-  const sv=parseInt(t)===1?'2':parseInt(t)===2?'4':null;
-  if(!sv){alert('Opción inválida');return;}
-  const cant=parseInt(prompt('¿Cuántos centros?')||'0')||0;
-  if(cant<=0){alert('Cantidad inválida');return;}
+async function agregarCentro(){
+  const sv=await uiChoose('¿Centro de cuántos servicios?',[
+    {label:'2 servicios — $600',value:'2'},{label:'4 servicios — $900',value:'4'}
+  ]);
+  if(!sv)return;
+  const cant=await pedirNum('¿Cuántos centros?','$'+PRECIOS_MATERIAL['centro_'+sv]+' c/u');
+  if(cant===null||cant<=0)return;
   const precio=PRECIOS_MATERIAL['centro_'+sv];
   desgloseItems.push({tipo:'centro',subtipo:sv,cantidad:cant,monto:cant*precio,
     nombreVisible:'Centro '+sv+' serv. x'+cant,
     descuentaSaldo:MAP_MATERIAL_SALDO['centro_'+sv],descuentaCant:cant});
   renderDesglose();recalcTrabajo();
 }
-function agregarCable(){
-  const m=prompt('¿Cuántos metros de cable se usaron en total?');
-  if(m===null)return;
-  const metros=parseFloat(m)||0;
-  if(metros<=0){alert('Metros inválidos');return;}
-  // los metros cobrables se calculan al recalc (dependen de # equipos)
+async function agregarCable(){
+  const metros=await pedirNum('¿Cuántos metros de cable se usaron en total?','$60 por metro extra · 5m gratis por equipo');
+  if(metros===null||metros<=0)return;
   desgloseItems.push({tipo:'cable',metros,monto:0,
     nombreVisible:'Cable '+metros+'m',descuentaCableMetros:metros});
   renderDesglose();recalcTrabajo();
 }
-function agregarDesinstalacion(){
-  const p=prompt('Precio cobrado por la desinstalación:');if(p===null)return;
-  desgloseItems.push({tipo:'desinstalacion',monto:parseFloat(p)||0,
+async function agregarDesinstalacion(){
+  const monto=await pedirNum('Precio cobrado por la desinstalación','Desinstalación');
+  if(monto===null)return;
+  desgloseItems.push({tipo:'desinstalacion',monto,
     nombreVisible:'Desinstalación',pagaConcepto:'Desinstalación'});
   renderDesglose();recalcTrabajo();
 }
-function agregarOtro(){
-  const nom=prompt('¿Qué concepto?');if(!nom)return;
-  const p=prompt('Precio:');if(p===null)return;
-  desgloseItems.push({tipo:'otro',monto:parseFloat(p)||0,nombreVisible:nom.trim()});
+async function agregarOtro(){
+  const nom=await uiInput('¿Qué concepto?',{tipo:'texto',placeholder:'nombre del concepto'});
+  if(!nom)return;
+  const monto=await pedirNum('Precio','');
+  if(monto===null)return;
+  desgloseItems.push({tipo:'otro',monto,nombreVisible:nom.trim()});
   renderDesglose();recalcTrabajo();
 }
 
