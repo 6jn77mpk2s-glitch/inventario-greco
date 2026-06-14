@@ -1639,19 +1639,62 @@ async function devolverDesdeMov(id){
   const cant=parseInt(g);
   if(isNaN(cant)||cant<=0){alert('Número inválido');return;}
   if(cant>salieron){alert('No puede devolver más de lo que salió ('+salieron+')');return;}
+
+  // ¿A qué sucursal regresa? Por defecto la de origen
+  const opts=Object.keys(BRANCHES);
+  const lista=opts.map((b,i)=>(i+1)+'. '+BRANCHES[b]+(b===m.sucursal?' (origen)':'')).join('\n');
+  const defIdx=opts.indexOf(m.sucursal)+1;
+  const sel=prompt('¿A qué sucursal regresa?\n\n'+lista,String(defIdx));
+  if(sel===null)return;
+  const idx=parseInt(sel)-1;
+  if(isNaN(idx)||idx<0||idx>=opts.length){alert('Opción inválida');return;}
+  const sucRegreso=opts[idx];
+
   try{
-    // Sumar de vuelta al inventario de la sucursal del movimiento original
-    await sumarStock(m.sucursal,m.tipo,m.nombre,cant,m);
-    // Registrar movimiento de devolución (entrada, hoy, con el técnico)
+    // Sumar al inventario de la sucursal elegida (crear si no existe)
+    await sumarStockCrear(sucRegreso,m.tipo,m.nombre,cant,m);
+    // Nota con el detalle salió de X, volvió a Y
+    const distinto=(sucRegreso!==m.sucursal);
+    const nota=distinto
+      ? 'Devolución de '+(m.tecnico||'técnico')+' — salió de '+BRANCHES[m.sucursal]+', volvió a '+BRANCHES[sucRegreso]
+      : 'Devolución de '+(m.tecnico||'técnico');
+    // Registrar la devolución en la sucursal de regreso
     await api('movimientos',{method:'POST',body:JSON.stringify({
-      sucursal:m.sucursal,tipo:m.tipo,nombre:m.nombre,cantidad:cant,
-      destino:'devolucion',tecnico:m.tecnico||'',motivo:'Devolución de '+(m.tecnico||'técnico'),
-      sucursal_destino:'',usuario:currentUser||'',
+      sucursal:sucRegreso,tipo:m.tipo,nombre:m.nombre,cantidad:cant,
+      destino:'devolucion',tecnico:m.tecnico||'',motivo:nota,
+      sucursal_destino:distinto?m.sucursal:'',usuario:currentUser||'',
       voltaje:m.voltaje||'',ton:m.ton||'',lote:'',fecha:new Date().toISOString()
     })});
-    showToast(cant+' devuelto(s) por '+(m.tecnico||'técnico')+' ✓');
+    showToast(cant+' devuelto(s) a '+BRANCHES[sucRegreso]+' ✓');
     loadMovimientos();loadGlobalTotal();
   }catch(e){showToast('Error al devolver',true);}
+}
+
+// Suma stock creando el registro si no existe en esa sucursal
+async function sumarStockCrear(suc,tipo,nombre,cantidad,m){
+  if(tipo==='aire'){
+    let q='inventario?select=*&sucursal=eq.'+suc+'&modelo=eq.'+encodeURIComponent(nombre);
+    if(m&&m.voltaje)q+='&voltaje=eq.'+encodeURIComponent(m.voltaje);
+    if(m&&m.ton)q+='&ton=eq.'+encodeURIComponent(m.ton);
+    const f=await api(q);
+    if(f.length){
+      await api('inventario?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:(parseInt(f[0].qty)||0)+cantidad,updated_at:new Date().toISOString()})});
+    }else{
+      // crear: necesitamos marca; intentamos hallarla en otra sucursal
+      let marca='OTRA';
+      const ref=await api('inventario?select=marca&modelo=eq.'+encodeURIComponent(nombre)+'&limit=1');
+      if(ref.length)marca=ref[0].marca;
+      await api('inventario',{method:'POST',body:JSON.stringify({sucursal:suc,marca,modelo:nombre,voltaje:m.voltaje||'',ton:m.ton||'',qty:cantidad,nota:''})});
+    }
+  }else{
+    const q='materiales?select=*&sucursal=eq.'+suc+'&nombre=eq.'+encodeURIComponent(nombre);
+    const f=await api(q);
+    if(f.length){
+      await api('materiales?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:(parseInt(f[0].qty)||0)+cantidad,updated_at:new Date().toISOString()})});
+    }else{
+      await api('materiales',{method:'POST',body:JSON.stringify({sucursal:suc,nombre,qty:cantidad,nota:''})});
+    }
+  }
 }
 
 // Suma stock al inventario (identifica aire por modelo+volt+ton)
