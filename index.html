@@ -447,6 +447,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   <div class="tabs">
     <div class="tab active" id="tabSemana" onclick="switchTrabTab('semana')">📅 SEMANA</div>
     <div class="tab" id="tabCorte" onclick="switchTrabTab('corte')">💰 CORTE</div>
+    <div class="tab" id="tabPagos" onclick="switchTrabTab('pagos')">💵 PAGOS</div>
     <div class="tab" id="tabPend" onclick="switchTrabTab('pendientes')">📌 DEBEN</div>
     <div class="tab" id="tabTarifas" onclick="switchTrabTab('tarifas')">🏷️ TARIFAS</div>
   </div>
@@ -468,6 +469,20 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="renderCorte()" style="margin-left:auto">↻</button>
     </div>
     <div class="list" id="listCorte"></div>
+  </div>
+
+  <!-- PAGOS (lo que gana cada quien por dia/semana) -->
+  <div id="secPagos" style="display:none">
+    <div class="controls">
+      <button class="btn" id="pagosModoDia" onclick="setPagosModo('dia')">📅 Por día</button>
+      <button class="btn" id="pagosModoSem" onclick="setPagosModo('semana')">🗓️ Por semana</button>
+    </div>
+    <div class="controls" id="pagosDiaCtrl" style="border-top:none;padding-top:0">
+      <button class="btn btn-ghost" onclick="cambiarDiaPagos(-1)">←</button>
+      <input type="date" id="pagosFecha" onchange="renderPagos()" style="font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:7px;flex:1">
+      <button class="btn btn-ghost" onclick="cambiarDiaPagos(1)">→</button>
+    </div>
+    <div class="list" id="listPagos"></div>
   </div>
 
   <!-- PENDIENTES (cuentas por cobrar) -->
@@ -2226,6 +2241,7 @@ async function agregarBase(){
   const precio=PRECIOS_MATERIAL['base_'+ton];
   desgloseItems.push({tipo:'base',subtipo:ton,cantidad:cant,monto:cant*precio,
     nombreVisible:'Base '+ton+' ton x'+cant,
+    pagaConcepto:'Instalación de base',pagaCant:cant,
     descuentaSaldo:MAP_MATERIAL_SALDO['base_'+ton],descuentaCant:cant});
   renderDesglose();recalcTrabajo();
 }
@@ -2239,6 +2255,7 @@ async function agregarCentro(){
   const precio=PRECIOS_MATERIAL['centro_'+sv];
   desgloseItems.push({tipo:'centro',subtipo:sv,cantidad:cant,monto:cant*precio,
     nombreVisible:'Centro '+sv+' serv. x'+cant,
+    pagaConcepto:'Centro de carga '+sv+' espacios',pagaCant:cant,
     descuentaSaldo:MAP_MATERIAL_SALDO['centro_'+sv],descuentaCant:cant});
   renderDesglose();recalcTrabajo();
 }
@@ -2319,8 +2336,9 @@ function recalcTrabajo(){
   desgloseItems.forEach(d=>{
     if(d.pagaConcepto&&tarifas[d.pagaConcepto]){
       const t=tarifas[d.pagaConcepto];
-      sugTec+=(t[grupo]?t[grupo].monto:0);
-      sugAyu+=(t.ayudante?t.ayudante.monto:0);
+      const veces=d.pagaCant||1;
+      sugTec+=(t[grupo]?t[grupo].monto:0)*veces;
+      sugAyu+=(t.ayudante?t.ayudante.monto:0)*veces;
     }
   });
   // llenar campos si están vacíos o si el usuario no los ha tocado manualmente
@@ -2349,7 +2367,7 @@ async function guardarTrabajo(){
   const pagoAtrasNota=document.getElementById('trabPagoAtrasNota').value.trim();
   const nota=document.getElementById('trabNota').value.trim();
   // desglose simple para guardar
-  const desgGuardar=desgloseItems.map(d=>({nombre:d.nombreVisible,monto:d.monto||0}));
+  const desgGuardar=desgloseItems.map(d=>({nombre:d.nombreVisible,monto:d.monto||0,tipo:d.tipo,pagaConcepto:d.pagaConcepto||'',pagaCant:d.pagaCant||(d.pagaConcepto?1:0)}));
   const fd=new Date(fecha+'T12:00:00');
   const day=(fd.getDay()+6)%7;
   const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
@@ -2399,13 +2417,16 @@ function switchTrabTab(t){
   trabTab=t;
   document.getElementById('secSemana').style.display=t==='semana'?'block':'none';
   document.getElementById('secCorte').style.display=t==='corte'?'block':'none';
+  document.getElementById('secPagos').style.display=t==='pagos'?'block':'none';
   document.getElementById('secPend').style.display=t==='pendientes'?'block':'none';
   document.getElementById('secTarifas').style.display=t==='tarifas'?'block':'none';
   document.getElementById('tabSemana').className='tab'+(t==='semana'?' active':'');
   document.getElementById('tabCorte').className='tab'+(t==='corte'?' active':'');
+  document.getElementById('tabPagos').className='tab'+(t==='pagos'?' active':'');
   document.getElementById('tabPend').className='tab'+(t==='pendientes'?' active':'');
   document.getElementById('tabTarifas').className='tab'+(t==='tarifas'?' active':'');
   if(t==='corte')renderCorte();
+  if(t==='pagos')initPagos();
   if(t==='pendientes')loadPendientes();
   if(t==='tarifas')loadTarifas();
 }
@@ -2453,6 +2474,91 @@ function renderCorte(){
   ]));
   const cobRows=Object.keys(porCobrador).map(k=>[k,porCobrador[k],'#c084fc']);
   if(cobRows.length)list.appendChild(corteBlock('👤 Por entregar (lo cobra cada quien)',cobRows));
+}
+
+// ── PAGOS (lo que gana cada quien) ──
+let pagosModo='dia';
+
+function initPagos(){
+  if(!document.getElementById('pagosFecha').value)document.getElementById('pagosFecha').value=fmtFecha(new Date());
+  setPagosModo(pagosModo);
+}
+function setPagosModo(m){
+  pagosModo=m;
+  document.getElementById('pagosDiaCtrl').style.display=(m==='dia')?'flex':'none';
+  document.getElementById('pagosModoDia').className='btn'+(m==='dia'?' btn-primary':' btn-ghost');
+  document.getElementById('pagosModoSem').className='btn'+(m==='semana'?' btn-primary':' btn-ghost');
+  renderPagos();
+}
+function cambiarDiaPagos(delta){
+  const inp=document.getElementById('pagosFecha');
+  const base=inp.value?new Date(inp.value+'T12:00:00'):new Date();
+  base.setDate(base.getDate()+delta);
+  inp.value=fmtFecha(base);
+  renderPagos();
+}
+
+function renderPagos(){
+  const list=document.getElementById('listPagos');
+  // qué trabajos entran
+  let subset;
+  let titulo;
+  if(pagosModo==='dia'){
+    const f=document.getElementById('pagosFecha').value;
+    subset=trabajos.filter(t=>t.fecha===f);
+    const hoy=fmtFecha(new Date());
+    titulo=(f===hoy?'Hoy':f);
+  }else{
+    subset=trabajos.slice();
+    titulo='Toda la semana';
+  }
+  if(!subset.length){list.innerHTML='<div class="empty">Sin trabajos en '+titulo.toLowerCase()+'.</div>';return;}
+
+  // acumular por técnico y por ayudante
+  const tec={},ayu={};
+  let totTec=0,totAyu=0,totAtras=0;
+  subset.forEach(t=>{
+    const pt=parseFloat(t.pago_tecnico)||0;
+    const pa=parseFloat(t.pago_ayudante)||0;
+    const at=parseFloat(t.pago_atrasado)||0;
+    if(t.cuadrilla)tec[t.cuadrilla]=(tec[t.cuadrilla]||0)+pt;
+    const an=t.ayudante_nombre||t.ayudante;
+    if(an)ayu[an]=(ayu[an]||0)+pa;
+    totTec+=pt;totAyu+=pa;totAtras+=at;
+  });
+
+  list.innerHTML='';
+  // Total general
+  const head=document.createElement('div');head.className='item';head.style.padding='12px 14px';
+  head.innerHTML='<div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+esc(titulo)+'</div>'+
+    '<div style="display:flex;justify-content:space-between"><span style="font-size:13px;font-weight:700">Total a pagar</span>'+
+    '<span style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--orange)">$'+(totTec+totAyu+totAtras).toLocaleString()+'</span></div>';
+  list.appendChild(head);
+
+  // Técnicos
+  const tecRows=Object.keys(tec).filter(k=>tec[k]!==0).map(k=>[k,tec[k],'var(--green)']);
+  if(tecRows.length)list.appendChild(corteBlock('👷 Técnicos',tecRows));
+  // Ayudantes
+  const ayuRows=Object.keys(ayu).filter(k=>ayu[k]!==0).map(k=>[k,ayu[k],'var(--accent2)']);
+  if(ayuRows.length)list.appendChild(corteBlock('🤝 Ayudantes',ayuRows));
+  if(totAtras>0)list.appendChild(corteBlock('⏰ Pagos atrasados',[['Total atrasado',totAtras,'var(--orange)']]));
+
+  // Detalle por trabajo
+  const detGrp=document.createElement('div');detGrp.className='marca-group';
+  const dh=document.createElement('div');dh.className='marca-header';dh.style.color='var(--muted)';dh.textContent='DETALLE POR TRABAJO';
+  detGrp.appendChild(dh);
+  subset.forEach(t=>{
+    const an=t.ayudante_nombre||t.ayudante;
+    const row=document.createElement('div');row.className='item';row.style.padding='10px 12px';
+    const d=new Date(t.fecha+'T12:00:00');
+    const fch=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+    row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center">'+
+      '<div><div style="font-size:12px;font-weight:600">👷 '+esc(t.cuadrilla)+(an?' + '+esc(an):'')+'</div>'+
+      '<div style="font-size:10px;color:var(--muted)">'+fch+'</div></div>'+
+      '<div style="text-align:right;font-family:var(--mono);font-size:11px"><div style="color:var(--green)">Téc $'+(parseFloat(t.pago_tecnico)||0)+'</div><div style="color:var(--accent2)">Ayu $'+(parseFloat(t.pago_ayudante)||0)+'</div></div></div>';
+    detGrp.appendChild(row);
+  });
+  list.appendChild(detGrp);
 }
 
 // ── PENDIENTES (cuentas por cobrar) ──
