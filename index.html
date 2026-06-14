@@ -235,6 +235,11 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .ui-opt{width:100%;text-align:left;padding:15px 16px;font-size:15px;font-weight:600;background:var(--card);border:1.5px solid var(--border);border-radius:11px;color:var(--text);cursor:pointer;transition:all .12s;font-family:var(--sans);}
 .ui-opt:active{background:var(--accent);border-color:var(--accent);transform:scale(.98);}
 
+
+.quick-add{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;}
+.quick-btn{flex:1;min-width:30%;font-size:12px;font-weight:600;padding:10px 8px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);border-radius:9px;color:var(--accent2);cursor:pointer;font-family:var(--sans);transition:all .12s;}
+.quick-btn:active{background:var(--accent);color:#fff;transform:scale(.97);}
+
 </style>
 </head>
 <body>
@@ -498,8 +503,16 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 
     <!-- DESGLOSE DEL COBRO -->
     <div class="field"><label>Desglose del cobro al cliente</label></div>
+    <div class="quick-add">
+      <button class="quick-btn" onclick="agregarEquipoInst(true)">🔧 Equipo+Inst</button>
+      <button class="quick-btn" onclick="agregarBrake()">⚡ Brake</button>
+      <button class="quick-btn" onclick="agregarBase()">🔌 Base</button>
+      <button class="quick-btn" onclick="agregarCable()">🧵 Cable</button>
+      <button class="quick-btn" onclick="agregarCentro()">📦 Centro</button>
+      <button class="quick-btn" onclick="agregarServicio()">🛠️ Servicio</button>
+    </div>
     <div id="desgloseList" style="display:flex;flex-direction:column;gap:6px"></div>
-    <button class="btn btn-ghost" onclick="addDesgloseRow()" style="align-self:flex-start">+ Agregar renglón</button>
+    <button class="btn btn-ghost" onclick="addDesgloseRow()" style="align-self:flex-start">+ Otro tipo (instalación, desinstalación...)</button>
 
     <!-- Factura -->
     <div style="display:flex;align-items:center;gap:10px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:10px 12px">
