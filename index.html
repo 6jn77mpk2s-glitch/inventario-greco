@@ -543,17 +543,12 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     </div>
 
     <!-- Cómo / quién cobra -->
-    <div class="field"><label>¿Cómo se cobró?</label>
-      <select id="trabFormaPago" onchange="toggleQuienCobra()">
-        <option value="efectivo">💵 Efectivo</option>
-        <option value="transferencia">🏦 Transferencia a mí</option>
-        <option value="tarjeta">💳 Tarjeta oficina</option>
-        <option value="cobra_otro">👤 Lo cobra alguien más</option>
-        <option value="local">🏪 Dejó en local</option>
-      </select>
-    </div>
-    <div class="field" id="quienCobraWrap" style="display:none"><label>¿Quién lo cobra?</label>
-      <input type="text" id="trabQuienCobra" placeholder="ej. Gre">
+    <div class="field"><label>¿Cómo se cobró? (puedes dividir el pago)</label></div>
+    <div id="pagosList" style="display:flex;flex-direction:column;gap:6px"></div>
+    <button class="btn btn-ghost" onclick="addPagoRow()" style="align-self:flex-start">+ Agregar forma de pago</button>
+    <div class="qty-block" style="margin-top:2px">
+      <div class="qty-actual-row"><span class="qty-actual-lbl">Suma de pagos</span><span class="qty-actual-val" id="pagosSuma">$0</span></div>
+      <div class="qty-actual-row" id="pagosDifRow" style="display:none"><span class="qty-actual-lbl" style="color:var(--red)">Falta / sobra</span><span class="qty-actual-val" id="pagosDif" style="color:var(--red)">$0</span></div>
     </div>
 
     <!-- Pago a técnico (manual con sugerencia) -->
@@ -2056,8 +2051,15 @@ function buildTrabajoCard(t){
   const desg=Array.isArray(t.desglose)?t.desglose:(JSON.parse(t.desglose||'[]'));
   const desgSummary=desg.length?desg.map(x=>x.nombre+' $'+(parseFloat(x.monto)||0).toLocaleString()).join(' · '):'sin desglose';
   const total=parseFloat(t.total)||parseFloat(t.cobrado)||0;
-  const fpMap={efectivo:'💵 Efectivo',transferencia:'🏦 Transfer a '+(t.usuario||'mí'),tarjeta:'💳 Tarjeta oficina',cobra_otro:'👤 Cobra '+(t.quien_cobra||'otro'),local:'🏪 Local'};
-  const fp=fpMap[t.forma_pago]||t.forma_pago;
+  const fpShort={efectivo:'💵 Efectivo',transferencia:'🏦 Transfer',tarjeta:'💳 Tarjeta of.',cobra_otro:'👤 Cobra',local:'🏪 Local'};
+  const pagosSplit=t.pagos?(Array.isArray(t.pagos)?t.pagos:JSON.parse(t.pagos||'[]')):[];
+  let fp;
+  if(pagosSplit.length>1){
+    fp=pagosSplit.map(p=>(fpShort[p.forma]||p.forma)+(p.forma==='cobra_otro'&&p.quien?' '+esc(p.quien):'')+' $'+(parseFloat(p.monto)||0).toLocaleString()).join(' + ');
+  }else{
+    const fpMap={efectivo:'💵 Efectivo',transferencia:'🏦 Transfer a '+(t.usuario||'mí'),tarjeta:'💳 Tarjeta oficina',cobra_otro:'👤 Cobra '+(t.quien_cobra||'otro'),local:'🏪 Local'};
+    fp=fpMap[t.forma_pago]||t.forma_pago;
+  }
   const facturaTag=t.con_factura?'<span class="tag" style="color:var(--orange)">+factura 8%</span>':'';
   const ayuNom=t.ayudante_nombre||t.ayudante||'';
   const main=document.createElement('div');main.className='item-main';
@@ -2129,15 +2131,14 @@ function openTrabajoModal(){
   document.getElementById('trabFecha').value=fmtFecha(new Date());
   document.getElementById('trabCuadrilla').value='Alan';
   document.getElementById('trabFactura').checked=false;
-  document.getElementById('trabFormaPago').value='efectivo';
-  document.getElementById('trabQuienCobra').value='';
   document.getElementById('trabPagoTec').value='';document.getElementById('trabPagoTec').dataset.touched='';
   document.getElementById('trabPagoAyu').value='';document.getElementById('trabPagoAyu').dataset.touched='';
   document.getElementById('trabPagoAtras').value='';
   document.getElementById('trabPagoAtrasNota').value='';
   document.getElementById('trabNota').value='';
   refreshAyudanteSelect();
-  toggleQuienCobra();
+  pagosItems=[{forma:'efectivo',quien:'',monto:0}];
+  renderPagosList();
   desgloseItems=[];
   renderDesglose();
   recalcTrabajo();
@@ -2146,9 +2147,70 @@ function openTrabajoModal(){
 function closeTrabModal(){document.getElementById('modalTrabajo').classList.remove('open');}
 function closeTrabModalBg(e){if(e.target===document.getElementById('modalTrabajo'))closeTrabModal();}
 
-function toggleQuienCobra(){
-  const fp=document.getElementById('trabFormaPago').value;
-  document.getElementById('quienCobraWrap').style.display=(fp==='cobra_otro')?'flex':'none';
+// ── FORMAS DE PAGO DIVIDIDAS ──
+let pagosItems=[]; // [{forma, quien, monto}]
+const FORMAS_PAGO=[
+  {value:'efectivo',label:'💵 Efectivo'},
+  {value:'transferencia',label:'🏦 Transferencia a mí'},
+  {value:'tarjeta',label:'💳 Tarjeta oficina'},
+  {value:'cobra_otro',label:'👤 Lo cobra alguien'},
+  {value:'local',label:'🏪 Dejó en local'}
+];
+function addPagoRow(){
+  pagosItems.push({forma:'efectivo',quien:'',monto:0});
+  renderPagosList();
+}
+function renderPagosList(){
+  const cont=document.getElementById('pagosList');
+  cont.innerHTML='';
+  pagosItems.forEach((p,idx)=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;flex-direction:column;gap:5px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px';
+    const top=document.createElement('div');top.style.cssText='display:flex;gap:6px;align-items:center';
+    const sel=document.createElement('select');sel.style.flex='1';
+    FORMAS_PAGO.forEach(f=>{const o=document.createElement('option');o.value=f.value;o.textContent=f.label;if(f.value===p.forma)o.selected=true;sel.appendChild(o);});
+    sel.onchange=()=>{p.forma=sel.value;renderPagosList();recalcTrabajo();};
+    const mon=document.createElement('input');mon.type='number';mon.placeholder='monto';mon.value=p.monto||'';mon.inputMode='decimal';mon.style.width='100px';
+    mon.oninput=()=>{p.monto=parseFloat(mon.value)||0;recalcSumaPagos();};
+    top.appendChild(sel);top.appendChild(mon);
+    if(pagosItems.length>1){
+      const del=document.createElement('button');del.textContent='×';del.style.cssText='width:30px;height:34px;border:1px solid rgba(239,68,68,.3);border-radius:6px;background:transparent;color:var(--red);cursor:pointer';
+      del.onclick=()=>{pagosItems.splice(idx,1);renderPagosList();recalcTrabajo();};
+      top.appendChild(del);
+    }
+    row.appendChild(top);
+    if(p.forma==='cobra_otro'){
+      const q=document.createElement('input');q.type='text';q.placeholder='¿quién lo cobra? ej. Gre';q.value=p.quien||'';
+      q.style.cssText='font-size:12px';
+      q.oninput=()=>{p.quien=q.value;};
+      row.appendChild(q);
+    }
+    cont.appendChild(row);
+  });
+  recalcSumaPagos();
+}
+function recalcSumaPagos(){
+  const suma=pagosItems.reduce((s,p)=>s+(parseFloat(p.monto)||0),0);
+  document.getElementById('pagosSuma').textContent='$'+suma.toLocaleString();
+  // comparar con total
+  const totalText=document.getElementById('trabTotal').textContent.replace(/[$,]/g,'');
+  const total=parseFloat(totalText)||0;
+  const dif=total-suma;
+  const difRow=document.getElementById('pagosDifRow');
+  if(Math.abs(dif)>0.5){
+    difRow.style.display='flex';
+    document.getElementById('pagosDif').textContent=(dif>0?'Falta $':'Sobra $')+Math.abs(dif).toLocaleString();
+  }else{
+    difRow.style.display='none';
+  }
+}
+// Autollenar el primer pago con el total si solo hay uno y está en 0
+function autollenarPagoUnico(){
+  if(pagosItems.length===1 && (!pagosItems[0].monto || pagosItems[0].monto===0)){
+    const totalText=document.getElementById('trabTotal').textContent.replace(/[$,]/g,'');
+    const total=parseFloat(totalText)||0;
+    if(total>0){pagosItems[0].monto=total;renderPagosList();}
+  }
 }
 function refreshAyudanteSelect(){
   const sel=document.getElementById('trabAyudante');
@@ -2366,6 +2428,8 @@ function recalcTrabajo(){
   if(!campoTec.dataset.touched)campoTec.value=sugTec||'';
   if(!campoAyu.dataset.touched)campoAyu.value=sugAyu||'';
   document.getElementById('sugTecnico').textContent=sugTec?'(sugerido $'+sugTec+')':'';
+  autollenarPagoUnico();
+  recalcSumaPagos();
   return {subtotal,iva,total};
 }
 
@@ -2378,8 +2442,17 @@ async function guardarTrabajo(){
   if(!desgloseItems.length){alert('Agrega al menos un renglón');return;}
   const {subtotal,iva,total}=recalcTrabajo();
   const factura=document.getElementById('trabFactura').checked;
-  const forma=document.getElementById('trabFormaPago').value;
-  const quienCobra=(forma==='cobra_otro')?document.getElementById('trabQuienCobra').value.trim():'';
+  // Formas de pago divididas
+  const pagosLimpios=pagosItems.filter(p=>(parseFloat(p.monto)||0)>0).map(p=>({forma:p.forma,quien:p.forma==='cobra_otro'?(p.quien||'').trim():'',monto:parseFloat(p.monto)||0}));
+  const sumaPagos=pagosLimpios.reduce((s,p)=>s+p.monto,0);
+  if(pagosLimpios.length===0){alert('Indica cómo se cobró (al menos una forma de pago con monto)');return;}
+  if(Math.abs(total-sumaPagos)>0.5){
+    if(!confirm('La suma de los pagos ($'+sumaPagos.toLocaleString()+') no cuadra con el total ($'+total.toLocaleString()+'). ¿Guardar de todas formas?'))return;
+  }
+  // forma principal = la de mayor monto (para compatibilidad con vistas viejas)
+  const principal=pagosLimpios.slice().sort((a,b)=>b.monto-a.monto)[0];
+  const forma=principal.forma;
+  const quienCobra=principal.forma==='cobra_otro'?principal.quien:'';
   const pagoTec=parseFloat(document.getElementById('trabPagoTec').value)||0;
   const pagoAyu=parseFloat(document.getElementById('trabPagoAyu').value)||0;
   const pagoAtras=parseFloat(document.getElementById('trabPagoAtras').value)||0;
@@ -2396,7 +2469,7 @@ async function guardarTrabajo(){
       fecha,semana:sid,cuadrilla,ayudante,ayudante_nombre:ayudante,
       desglose:JSON.stringify(desgGuardar),
       con_factura:factura,subtotal,total,cobrado:total,
-      forma_pago:forma,quien_cobra:quienCobra,
+      forma_pago:forma,quien_cobra:quienCobra,pagos:JSON.stringify(pagosLimpios),
       pago_tecnico:pagoTec,pago_ayudante:pagoAyu,
       pago_atrasado:pagoAtras,pago_atrasado_nota:pagoAtrasNota,
       nota,usuario:currentUser||''
@@ -2467,8 +2540,17 @@ function renderCorte(){
     porTecnico[t.cuadrilla]=(porTecnico[t.cuadrilla]||0)+(parseFloat(t.pago_tecnico)||0);
     const ayuNom=t.ayudante_nombre||t.ayudante;
     if(ayuNom)porAyudante[ayuNom]=(porAyudante[ayuNom]||0)+(parseFloat(t.pago_ayudante)||0);
-    if(porForma[t.forma_pago]!==undefined)porForma[t.forma_pago]+=tot;
-    if(t.forma_pago==='cobra_otro'&&t.quien_cobra){porCobrador[t.quien_cobra]=(porCobrador[t.quien_cobra]||0)+tot;}
+    // formas de pago: usar split si existe, si no la forma única
+    const pagosSplit=t.pagos?(Array.isArray(t.pagos)?t.pagos:JSON.parse(t.pagos||'[]')):[];
+    if(pagosSplit.length){
+      pagosSplit.forEach(p=>{
+        if(porForma[p.forma]!==undefined)porForma[p.forma]+=(parseFloat(p.monto)||0);
+        if(p.forma==='cobra_otro'&&p.quien){porCobrador[p.quien]=(porCobrador[p.quien]||0)+(parseFloat(p.monto)||0);}
+      });
+    }else{
+      if(porForma[t.forma_pago]!==undefined)porForma[t.forma_pago]+=tot;
+      if(t.forma_pago==='cobra_otro'&&t.quien_cobra){porCobrador[t.quien_cobra]=(porCobrador[t.quien_cobra]||0)+tot;}
+    }
   });
   const utilidad=cobrado-pagoTec-pagoAyu-pagoAtras;
 
