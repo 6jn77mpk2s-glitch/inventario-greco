@@ -2262,8 +2262,17 @@ async function agregarCentro(){
 async function agregarCable(){
   const metros=await pedirNum('¿Cuántos metros de cable se usaron en total?','$60 por metro extra · 5m gratis por equipo');
   if(metros===null||metros<=0)return;
-  desgloseItems.push({tipo:'cable',metros,monto:0,
-    nombreVisible:'Cable '+metros+'m',descuentaCableMetros:metros});
+  const item={tipo:'cable',metros,monto:0,montoManual:null,
+    nombreVisible:'Cable '+metros+'m',descuentaCableMetros:metros};
+  desgloseItems.push(item);
+  recalcCable(); // calcula y redondea
+  // Preguntar si quiere ajustar el monto final
+  const sugerido=item.monto;
+  const ajuste=await uiInput('Precio del cable (redondeado al 50)',{tipo:'numero',valor:sugerido,sub:'Puedes dejarlo o poner otro número cerrado'});
+  if(ajuste!==null&&ajuste!==''){
+    const val=parseFloat(ajuste);
+    if(!isNaN(val))item.montoManual=val;
+  }
   renderDesglose();recalcTrabajo();
 }
 async function agregarDesinstalacion(){
@@ -2282,16 +2291,26 @@ async function agregarOtro(){
   renderDesglose();recalcTrabajo();
 }
 
+// Redondea al múltiplo de 50 más cercano
+function redondear50(n){return Math.round(n/50)*50;}
+// Limpia decimales largos (8.3000001 -> 8.3)
+function limpiarNum(n){return Math.round(n*100)/100;}
+
 // Recalcula metros cobrables de cable según # de equipos
 function recalcCable(){
   const numEquipos=desgloseItems.filter(d=>d.tipo==='instalacion'&&d.cuentaEquipo).length;
   const gratis=numEquipos*CABLE_GRATIS_POR_EQUIPO;
   desgloseItems.forEach(d=>{
     if(d.tipo==='cable'){
-      const cobrables=Math.max(0,d.metros-gratis);
+      const metros=limpiarNum(d.metros);
+      const cobrables=limpiarNum(Math.max(0,metros-gratis));
       d.metrosCobrables=cobrables;
-      d.monto=cobrables*PRECIOS_MATERIAL.cable_metro;
-      d.nombreVisible='Cable '+d.metros+'m (cobra '+cobrables+'m, '+gratis+' gratis)';
+      const bruto=cobrables*PRECIOS_MATERIAL.cable_metro;
+      const redondeado=redondear50(bruto);
+      // si el usuario puso monto manual, respetarlo
+      d.monto=(d.montoManual!=null)?d.montoManual:redondeado;
+      const sufijo=(d.montoManual!=null&&d.montoManual!==redondeado)?' · monto ajustado':'';
+      d.nombreVisible='Cable '+metros+'m (cobra '+cobrables+'m, '+gratis+' gratis)'+sufijo;
     }
   });
 }
