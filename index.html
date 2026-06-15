@@ -490,6 +490,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   <div id="secCaja" style="display:none">
     <div class="controls">
       <button class="btn btn-primary" onclick="openSalidaModal()">− Registrar salida</button>
+      <button class="btn btn-batch-in" onclick="intercambioDigital()">🔄 Cambié digital por efectivo</button>
       <button class="btn btn-ghost" onclick="loadCaja()" style="margin-left:auto">↻</button>
     </div>
     <div class="list" id="listCaja"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
@@ -2752,6 +2753,10 @@ function calcEntradasSemana(){
   cajaPendPagados.forEach(p=>{
     if(p.semana_pago===sid && p.bolsa_pago==='efectivo')efectivo+=(parseFloat(p.monto)||0);
   });
+  // Intercambios: le compré digital al patrón -> baja banco, sube efectivo (de esta semana)
+  cajaSalidas.forEach(s=>{
+    if(s.bolsa==='banco'&&s.categoria==='Cambio a efectivo'&&s.semana===sid)efectivo+=(parseFloat(s.monto)||0);
+  });
   return {efectivo,banco};
 }
 
@@ -2798,6 +2803,10 @@ function renderCaja(){
   let cubiertoBanco=0;
   salSemana.forEach(s=>{if(s.bolsa==='banco'&&s.categoria==='Cobertura de efectivo')cubiertoBanco+=(parseFloat(s.monto)||0);});
   if(cubiertoBanco>0)cardEf.appendChild(lineaCaja('Cubierto desde banco',cubiertoBanco,'var(--green)'));
+  // Intercambios (le compré digital al patrón): sube efectivo
+  let cambioEf=0;
+  salSemana.forEach(s=>{if(s.bolsa==='banco'&&s.categoria==='Cambio a efectivo')cambioEf+=(parseFloat(s.monto)||0);});
+  if(cambioEf>0)cardEf.appendChild(lineaCaja('Cambié digital por efectivo',cambioEf,'var(--green)'));
   if(montoEntregado>0)cardEf.appendChild(lineaCaja('Corte entregado',-montoEntregado,'var(--muted)'));
   let efDisp2=efectivoDisp+cubiertoBanco;
   if(entregado)efDisp2=0;
@@ -2843,12 +2852,22 @@ function renderCaja(){
     cardB.appendChild(r);
   });
 
-  // ── Lista de salidas de la semana ──
-  if(salSemana.length){
+  // ── Lista de salidas de la semana (excluye movimientos internos auto) ──
+  const salManual=salSemana.filter(s=>s.categoria!=='Cobertura de efectivo'&&s.categoria!=='Cambio a efectivo');
+  if(salManual.length){
     const grp=document.createElement('div');grp.className='marca-group';
     const h=document.createElement('div');h.className='marca-header';h.style.color='var(--muted)';h.textContent='SALIDAS REGISTRADAS (esta semana)';
     grp.appendChild(h);
-    salSemana.forEach(s=>grp.appendChild(buildSalidaCard(s)));
+    salManual.forEach(s=>grp.appendChild(buildSalidaCard(s)));
+    list.appendChild(grp);
+  }
+  // ── Movimientos internos (cambios/coberturas) ──
+  const salInternas=salSemana.filter(s=>s.categoria==='Cobertura de efectivo'||s.categoria==='Cambio a efectivo');
+  if(salInternas.length){
+    const grp=document.createElement('div');grp.className='marca-group';
+    const h=document.createElement('div');h.className='marca-header';h.style.color='var(--muted)';h.textContent='MOVIMIENTOS INTERNOS (esta semana)';
+    grp.appendChild(h);
+    salInternas.forEach(s=>grp.appendChild(buildSalidaCard(s)));
     list.appendChild(grp);
   }
 }
@@ -2934,6 +2953,23 @@ async function delSalida(id){
     await api('caja_salidas?id=eq.'+id,{method:'DELETE'});
     cajaSalidas=cajaSalidas.filter(x=>x.id!==id);
     renderCaja();showToast('Eliminada');
+  }catch(e){showToast('Error',true);}
+}
+
+async function intercambioDigital(){
+  const v=await uiInput('¿Cuánto digital le compraste al patrón?',{tipo:'numero',placeholder:'0',sub:'Baja el banco y sube tu efectivo'});
+  if(v===null)return;
+  const monto=parseFloat(v)||0;
+  if(monto<=0){showToast('Monto inválido',true);return;}
+  const sid=semanaId(semanaOffset);
+  const hoy=fmtFecha(new Date());
+  try{
+    await api('caja_salidas',{method:'POST',body:JSON.stringify({
+      fecha:hoy,semana:sid,bolsa:'banco',categoria:'Cambio a efectivo',
+      concepto:'Le compré digital al patrón (pagué en efectivo)',monto,automatico:false,usuario:currentUser||''
+    })});
+    showToast('Registrado: banco -$'+monto.toLocaleString()+', efectivo +$'+monto.toLocaleString());
+    loadCaja();
   }catch(e){showToast('Error',true);}
 }
 
