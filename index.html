@@ -512,7 +512,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="field-row">
       <div class="field"><label>Fecha</label><input type="date" id="trabFecha"></div>
       <div class="field"><label>Cuadrilla</label>
-        <select id="trabCuadrilla" onchange="recalcTrabajo()"><option>Alan</option><option>Eduardo</option><option>Henry</option><option>David</option></select>
+        <select id="trabCuadrilla" onchange="recalcTrabajo()"><option value="">— Selecciona —</option><option>Alan</option><option>Eduardo</option><option>Henry</option><option>David</option></select>
       </div>
     </div>
 
@@ -1995,7 +1995,7 @@ async function loadTrabajos(){
   updateWeekHeader();
   document.getElementById('listSemana').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
-    trabajos=await api('trabajos?select=*&semana=eq.'+sid+'&order=fecha.asc,id.asc');
+    trabajos=await api('trabajos?select=*&semana=eq.'+sid+'&usuario=eq.'+encodeURIComponent(currentUser||'')+'&order=fecha.asc,id.asc');
     // recopilar ayudantes vistos
     trabajos.forEach(t=>{if(t.ayudante&&!ayudantes.includes(t.ayudante))ayudantes.push(t.ayudante);});
     renderSemana();renderResumenSemana();
@@ -2129,7 +2129,9 @@ let desgloseItems=[]; // [{tipo, ...campos, monto, nombreVisible, pagaTecnico, d
 
 function openTrabajoModal(){
   document.getElementById('trabFecha').value=fmtFecha(new Date());
-  document.getElementById('trabCuadrilla').value='Alan';
+  // Cuadrilla por defecto = nombre del perfil si es técnico, si no sin seleccionar
+  const tecnicos=['Alan','Eduardo','Henry','David'];
+  document.getElementById('trabCuadrilla').value=tecnicos.includes(currentUser)?currentUser:'';
   document.getElementById('trabFactura').checked=false;
   document.getElementById('trabPagoTec').value='';document.getElementById('trabPagoTec').dataset.touched='';
   document.getElementById('trabPagoAyu').value='';document.getElementById('trabPagoAyu').dataset.touched='';
@@ -2437,6 +2439,7 @@ async function guardarTrabajo(){
   const fecha=document.getElementById('trabFecha').value;
   if(!fecha){alert('Selecciona la fecha');return;}
   const cuadrilla=document.getElementById('trabCuadrilla').value;
+  if(!cuadrilla){alert('Selecciona la cuadrilla (técnico)');return;}
   const ayudante=document.getElementById('trabAyudante').value;
   recalcCable();
   if(!desgloseItems.length){alert('Agrega al menos un renglón');return;}
@@ -2695,7 +2698,7 @@ async function loadPendientes(){
   const list=document.getElementById('listPend');
   list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
-    pendientes=await api('pendientes?select=*&order=saldado.asc,fecha.desc');
+    pendientes=await api('pendientes?select=*&usuario=eq.'+encodeURIComponent(currentUser||'')+'&order=saldado.asc,fecha.desc');
     renderPendientes();
   }catch(e){list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';}
 }
