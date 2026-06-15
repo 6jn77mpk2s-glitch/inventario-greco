@@ -448,6 +448,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="tab active" id="tabSemana" onclick="switchTrabTab('semana')">📅 SEMANA</div>
     <div class="tab" id="tabCorte" onclick="switchTrabTab('corte')">💰 CORTE</div>
     <div class="tab" id="tabPagos" onclick="switchTrabTab('pagos')">💵 PAGOS</div>
+    <div class="tab" id="tabCaja" onclick="switchTrabTab('caja')">🏦 CAJA</div>
     <div class="tab" id="tabPend" onclick="switchTrabTab('pendientes')">📌 DEBEN</div>
     <div class="tab" id="tabTarifas" onclick="switchTrabTab('tarifas')">🏷️ TARIFAS</div>
   </div>
@@ -483,6 +484,15 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="cambiarDiaPagos(1)">→</button>
     </div>
     <div class="list" id="listPagos"></div>
+  </div>
+
+  <!-- CAJA (control de dinero disponible) -->
+  <div id="secCaja" style="display:none">
+    <div class="controls">
+      <button class="btn btn-primary" onclick="openSalidaModal()">− Registrar salida</button>
+      <button class="btn btn-ghost" onclick="loadCaja()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="list" id="listCaja"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
 
   <!-- PENDIENTES (cuentas por cobrar) -->
@@ -584,6 +594,35 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="editor-actions">
       <button class="btn btn-primary" style="flex:1" onclick="guardarTrabajo()">Guardar trabajo</button>
       <button class="btn btn-cancel" onclick="closeTrabModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SALIDA DE CAJA -->
+<div class="modal" id="modalSalida" onclick="closeSalidaBg(event)">
+  <div class="modal-sheet">
+    <div class="modal-title">− Registrar salida de caja</div>
+    <div class="field"><label>¿De qué bolsa sale?</label>
+      <select id="salidaBolsa">
+        <option value="efectivo">💵 Efectivo</option>
+        <option value="banco">🏦 Banco / transferencias</option>
+      </select>
+    </div>
+    <div class="field"><label>Categoría</label>
+      <select id="salidaCategoria">
+        <option value="Pago a ayudante">👷 Pago a ayudante</option>
+        <option value="Gasolina">⛽ Gasolina</option>
+        <option value="Compra de materiales">🧰 Compra de materiales</option>
+        <option value="Mi sueldo">💰 Mi sueldo</option>
+        <option value="Otro">📋 Otro</option>
+      </select>
+    </div>
+    <div class="field"><label>Concepto / nota (opcional)</label><input type="text" id="salidaConcepto" placeholder="ej. gasolina camioneta"></div>
+    <div class="field"><label>Monto</label><input type="number" id="salidaMonto" placeholder="0" inputmode="decimal"></div>
+    <div class="field"><label>Fecha</label><input type="date" id="salidaFecha"></div>
+    <div class="editor-actions">
+      <button class="btn btn-primary" style="flex:1" onclick="guardarSalida()">Guardar salida</button>
+      <button class="btn btn-cancel" onclick="closeSalida()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -2513,15 +2552,18 @@ function switchTrabTab(t){
   document.getElementById('secSemana').style.display=t==='semana'?'block':'none';
   document.getElementById('secCorte').style.display=t==='corte'?'block':'none';
   document.getElementById('secPagos').style.display=t==='pagos'?'block':'none';
+  document.getElementById('secCaja').style.display=t==='caja'?'block':'none';
   document.getElementById('secPend').style.display=t==='pendientes'?'block':'none';
   document.getElementById('secTarifas').style.display=t==='tarifas'?'block':'none';
   document.getElementById('tabSemana').className='tab'+(t==='semana'?' active':'');
   document.getElementById('tabCorte').className='tab'+(t==='corte'?' active':'');
   document.getElementById('tabPagos').className='tab'+(t==='pagos'?' active':'');
+  document.getElementById('tabCaja').className='tab'+(t==='caja'?' active':'');
   document.getElementById('tabPend').className='tab'+(t==='pendientes'?' active':'');
   document.getElementById('tabTarifas').className='tab'+(t==='tarifas'?' active':'');
   if(t==='corte')renderCorte();
   if(t==='pagos')initPagos();
+  if(t==='caja')loadCaja();
   if(t==='pendientes')loadPendientes();
   if(t==='tarifas')loadTarifas();
 }
@@ -2663,6 +2705,218 @@ function renderPagos(){
     detGrp.appendChild(row);
   });
   list.appendChild(detGrp);
+}
+
+// ══════════ CAJA (control de dinero) ══════════
+const BANCO_SALDO_INICIAL=43536.09; // saldo del banco al arrancar el sistema
+
+let cajaSalidas=[];   // salidas de la semana actual (efectivo) + todas las del banco
+let cortesEntregados=[]; // cortes de efectivo ya entregados
+
+async function loadCaja(){
+  const list=document.getElementById('listCaja');
+  list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  const sid=semanaId(semanaOffset);
+  try{
+    // Salidas de ESTA semana (para efectivo) y TODAS (para banco acumulado)
+    cajaSalidas=await api('caja_salidas?select=*&usuario=eq.'+encodeURIComponent(currentUser||'')+'&order=fecha.desc,id.desc');
+    cortesEntregados=await api('caja_cortes?select=*&semana=eq.'+sid+'&usuario=eq.'+encodeURIComponent(currentUser||''));
+    renderCaja();
+  }catch(e){
+    list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
+  }
+}
+
+function calcEntradasSemana(){
+  // De los trabajos de la semana (ya filtrados por usuario en 'trabajos'): efectivo y transferencia
+  let efectivo=0, banco=0;
+  trabajos.forEach(t=>{
+    const pagosSplit=t.pagos?(Array.isArray(t.pagos)?t.pagos:JSON.parse(t.pagos||'[]')):[];
+    if(pagosSplit.length){
+      pagosSplit.forEach(p=>{
+        const m=parseFloat(p.monto)||0;
+        if(p.forma==='efectivo')efectivo+=m;
+        if(p.forma==='transferencia')banco+=m;
+      });
+    }else{
+      const tot=parseFloat(t.total)||parseFloat(t.cobrado)||0;
+      if(t.forma_pago==='efectivo')efectivo+=tot;
+      if(t.forma_pago==='transferencia')banco+=tot;
+    }
+  });
+  return {efectivo,banco};
+}
+
+function calcPagosAuto(){
+  // pagos a técnico + ayudante de la semana (salen del efectivo automáticamente)
+  let total=0;
+  trabajos.forEach(t=>{
+    total+=(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0)+(parseFloat(t.pago_atrasado)||0);
+  });
+  return total;
+}
+
+function renderCaja(){
+  const list=document.getElementById('listCaja');
+  const sid=semanaId(semanaOffset);
+  const entradas=calcEntradasSemana();
+  const pagosAuto=calcPagosAuto();
+
+  // Salidas manuales de la semana por bolsa
+  const salSemana=cajaSalidas.filter(s=>s.semana===sid);
+  let salEfManual=0;
+  salSemana.forEach(s=>{if(s.bolsa==='efectivo')salEfManual+=(parseFloat(s.monto)||0);});
+
+  // ¿ya se entregó el corte de efectivo de esta semana?
+  const entregado=cortesEntregados.length>0;
+  const montoEntregado=cortesEntregados.reduce((s,x)=>s+(parseFloat(x.monto_entregado)||0),0);
+
+  // EFECTIVO disponible esta semana = entró - pagos auto - salidas manuales efectivo - (lo entregado)
+  let efectivoDisp=entradas.efectivo - pagosAuto - salEfManual - montoEntregado;
+  if(entregado)efectivoDisp=0; // tras entregar, queda en 0
+
+  // BANCO acumulado = saldo inicial + TODAS las transferencias de trabajos (todas las semanas) - TODAS las salidas de banco
+  // Para el acumulado necesitamos todas las transferencias historicas; las calculamos abajo asincrono. Aqui usamos lo que tengamos.
+  list.innerHTML='';
+
+  // ── EFECTIVO ──
+  const cardEf=document.createElement('div');cardEf.className='marca-group';
+  const hEf=document.createElement('div');hEf.className='marca-header';hEf.style.color='var(--green)';hEf.textContent='💵 EFECTIVO (esta semana)';
+  cardEf.appendChild(hEf);
+  cardEf.appendChild(lineaCaja('Entró en efectivo',entradas.efectivo,'var(--green)'));
+  cardEf.appendChild(lineaCaja('Pagos a técnicos/ayudantes',-pagosAuto,'var(--orange)'));
+  cardEf.appendChild(lineaCaja('Otras salidas (efectivo)',-salEfManual,'var(--orange)'));
+  if(montoEntregado>0)cardEf.appendChild(lineaCaja('Corte entregado',-montoEntregado,'var(--muted)'));
+  const dispRow=document.createElement('div');dispRow.className='item';dispRow.style.cssText='padding:12px 14px;border-top:2px solid var(--border)';
+  dispRow.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px;font-weight:700">'+(entregado?'Ya entregado ✓':'Disponible ahora')+'</span><span style="font-family:var(--mono);font-size:20px;font-weight:700;color:'+(entregado?'var(--muted)':'var(--green)')+'">$'+efectivoDisp.toLocaleString(undefined,{maximumFractionDigits:2})+'</span></div>';
+  cardEf.appendChild(dispRow);
+  list.appendChild(cardEf);
+
+  // Botón entregar corte
+  if(!entregado && efectivoDisp>0){
+    const btnWrap=document.createElement('div');btnWrap.style.cssText='margin:10px 0';
+    const b=document.createElement('button');b.className='btn btn-success';b.style.cssText='width:100%;padding:13px;font-size:14px';
+    b.textContent='✓ Ya entregué el corte en efectivo ($'+efectivoDisp.toLocaleString(undefined,{maximumFractionDigits:2})+')';
+    b.onclick=()=>entregarCorte(efectivoDisp);
+    btnWrap.appendChild(b);list.appendChild(btnWrap);
+  }
+
+  // ── BANCO (acumulado) ──
+  const cardB=document.createElement('div');cardB.className='marca-group';
+  const hB=document.createElement('div');hB.className='marca-header';hB.style.color='var(--accent2)';hB.textContent='🏦 BANCO / TRANSFERENCIAS (acumulado)';
+  cardB.appendChild(hB);
+  cardB.appendChild(lineaCaja('Cargando saldo...',0,'var(--muted)'));
+  list.appendChild(cardB);
+  calcBancoAcumulado().then(saldo=>{
+    cardB.innerHTML='';
+    cardB.appendChild(hB);
+    cardB.appendChild(lineaCaja('Saldo inicial',BANCO_SALDO_INICIAL,'var(--muted)'));
+    cardB.appendChild(lineaCaja('Transferencias recibidas',saldo.transferencias,'var(--green)'));
+    cardB.appendChild(lineaCaja('Salidas del banco',-saldo.salidas,'var(--orange)'));
+    const r=document.createElement('div');r.className='item';r.style.cssText='padding:12px 14px;border-top:2px solid var(--border)';
+    r.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px;font-weight:700">Saldo en banco</span><span style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--accent2)">$'+saldo.total.toLocaleString(undefined,{maximumFractionDigits:2})+'</span></div>';
+    cardB.appendChild(r);
+  });
+
+  // ── Lista de salidas de la semana ──
+  if(salSemana.length){
+    const grp=document.createElement('div');grp.className='marca-group';
+    const h=document.createElement('div');h.className='marca-header';h.style.color='var(--muted)';h.textContent='SALIDAS REGISTRADAS (esta semana)';
+    grp.appendChild(h);
+    salSemana.forEach(s=>grp.appendChild(buildSalidaCard(s)));
+    list.appendChild(grp);
+  }
+}
+
+function lineaCaja(lbl,val,color){
+  const row=document.createElement('div');row.className='item';row.style.padding='9px 14px';
+  const signo=val<0?'-':'';
+  row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:var(--muted)">'+esc(lbl)+'</span><span style="font-family:var(--mono);font-size:14px;color:'+color+'">'+signo+'$'+Math.abs(val).toLocaleString(undefined,{maximumFractionDigits:2})+'</span></div>';
+  return row;
+}
+
+async function calcBancoAcumulado(){
+  // Transferencias de TODOS los trabajos del usuario (todas las semanas)
+  let transferencias=0;
+  try{
+    const todos=await api('trabajos?select=pagos,forma_pago,total,cobrado&usuario=eq.'+encodeURIComponent(currentUser||''));
+    todos.forEach(t=>{
+      const pagosSplit=t.pagos?(Array.isArray(t.pagos)?t.pagos:JSON.parse(t.pagos||'[]')):[];
+      if(pagosSplit.length){
+        pagosSplit.forEach(p=>{if(p.forma==='transferencia')transferencias+=(parseFloat(p.monto)||0);});
+      }else{
+        if(t.forma_pago==='transferencia')transferencias+=(parseFloat(t.total)||parseFloat(t.cobrado)||0);
+      }
+    });
+  }catch(e){}
+  // Salidas del banco (todas)
+  let salidas=0;
+  cajaSalidas.forEach(s=>{if(s.bolsa==='banco')salidas+=(parseFloat(s.monto)||0);});
+  const total=BANCO_SALDO_INICIAL+transferencias-salidas;
+  return {transferencias,salidas,total};
+}
+
+function buildSalidaCard(s){
+  const card=document.createElement('div');card.className='item';card.style.padding='10px 12px';
+  const d=new Date(s.fecha+'T12:00:00');
+  const fecha=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  const bolsa=s.bolsa==='efectivo'?'💵':'🏦';
+  card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div style="flex:1"><div style="font-size:13px;font-weight:600">'+bolsa+' '+esc(s.categoria)+'</div>'+(s.concepto?'<div style="font-size:11px;color:var(--muted)">'+esc(s.concepto)+'</div>':'')+'<div style="font-size:10px;color:var(--muted)">'+fecha+'</div></div><div style="font-family:var(--mono);font-size:16px;color:var(--orange)">-$'+(parseFloat(s.monto)||0).toLocaleString()+'</div></div>';
+  const acts=document.createElement('div');acts.style.cssText='margin-top:6px';
+  const del=document.createElement('button');del.className='btn btn-danger';del.textContent='🗑 Eliminar';del.style.cssText='font-size:11px;padding:4px 10px';
+  del.onclick=()=>delSalida(s.id);
+  acts.appendChild(del);card.appendChild(acts);
+  return card;
+}
+
+// ── Modal salida ──
+function openSalidaModal(){
+  document.getElementById('salidaBolsa').value='efectivo';
+  document.getElementById('salidaCategoria').value='Pago a ayudante';
+  document.getElementById('salidaConcepto').value='';
+  document.getElementById('salidaMonto').value='';
+  document.getElementById('salidaFecha').value=fmtFecha(new Date());
+  document.getElementById('modalSalida').classList.add('open');
+}
+function closeSalida(){document.getElementById('modalSalida').classList.remove('open');}
+function closeSalidaBg(e){if(e.target===document.getElementById('modalSalida'))closeSalida();}
+
+async function guardarSalida(){
+  const bolsa=document.getElementById('salidaBolsa').value;
+  const categoria=document.getElementById('salidaCategoria').value;
+  const concepto=document.getElementById('salidaConcepto').value.trim();
+  const monto=parseFloat(document.getElementById('salidaMonto').value)||0;
+  const fecha=document.getElementById('salidaFecha').value;
+  if(!monto||monto<=0){alert('Pon el monto');return;}
+  const fd=new Date(fecha+'T12:00:00');
+  const day=(fd.getDay()+6)%7;
+  const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
+  try{
+    await api('caja_salidas',{method:'POST',body:JSON.stringify({
+      fecha,semana:fmtFecha(lunes),bolsa,categoria,concepto,monto,automatico:false,usuario:currentUser||''
+    })});
+    closeSalida();showToast('Salida registrada ✓');loadCaja();
+  }catch(e){showToast('Error',true);}
+}
+
+async function delSalida(id){
+  if(!confirm('¿Eliminar esta salida?'))return;
+  try{
+    await api('caja_salidas?id=eq.'+id,{method:'DELETE'});
+    cajaSalidas=cajaSalidas.filter(x=>x.id!==id);
+    renderCaja();showToast('Eliminada');
+  }catch(e){showToast('Error',true);}
+}
+
+async function entregarCorte(monto){
+  if(!confirm('¿Marcar que ya entregaste $'+monto.toLocaleString(undefined,{maximumFractionDigits:2})+' en efectivo? El efectivo disponible quedará en 0.'))return;
+  const sid=semanaId(semanaOffset);
+  try{
+    await api('caja_cortes',{method:'POST',body:JSON.stringify({
+      semana:sid,monto_entregado:monto,usuario:currentUser||''
+    })});
+    showToast('Corte entregado ✓');loadCaja();
+  }catch(e){showToast('Error',true);}
 }
 
 // ── PENDIENTES (cuentas por cobrar) ──
