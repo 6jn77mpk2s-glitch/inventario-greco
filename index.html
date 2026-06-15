@@ -2712,6 +2712,7 @@ const BANCO_SALDO_INICIAL=43536.09; // saldo del banco al arrancar el sistema
 const BANCO_FECHA_CORTE='2026-06-14'; // solo cuenta movimientos de esta fecha en adelante
 
 let cajaSalidas=[];   // salidas de la semana actual (efectivo) + todas las del banco
+let cajaPendPagados=[]; // pendientes (DEBEN) ya cobrados
 let cortesEntregados=[]; // cortes de efectivo ya entregados
 
 async function loadCaja(){
@@ -2722,6 +2723,7 @@ async function loadCaja(){
     // Salidas de ESTA semana (para efectivo) y TODAS (para banco acumulado)
     cajaSalidas=await api('caja_salidas?select=*&usuario=eq.'+encodeURIComponent(currentUser||'')+'&order=fecha.desc,id.desc');
     cortesEntregados=await api('caja_cortes?select=*&semana=eq.'+sid+'&usuario=eq.'+encodeURIComponent(currentUser||''));
+    cajaPendPagados=await api('pendientes?select=*&saldado=eq.true&usuario=eq.'+encodeURIComponent(currentUser||''));
     renderCaja();
   }catch(e){
     list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
@@ -2744,6 +2746,11 @@ function calcEntradasSemana(){
       if(t.forma_pago==='efectivo')efectivo+=tot;
       if(t.forma_pago==='transferencia')banco+=tot;
     }
+  });
+  // Cuentas de DEBEN cobradas esta semana en efectivo
+  const sid=semanaId(semanaOffset);
+  cajaPendPagados.forEach(p=>{
+    if(p.semana_pago===sid && p.bolsa_pago==='efectivo')efectivo+=(parseFloat(p.monto)||0);
   });
   return {efectivo,banco};
 }
@@ -2787,18 +2794,35 @@ function renderCaja(){
   cardEf.appendChild(lineaCaja('Entró en efectivo',entradas.efectivo,'var(--green)'));
   cardEf.appendChild(lineaCaja('Pagos a técnicos/ayudantes',-pagosAuto,'var(--orange)'));
   cardEf.appendChild(lineaCaja('Otras salidas (efectivo)',-salEfManual,'var(--orange)'));
+  // Cobertura desde banco (si se cubrió faltante)
+  let cubiertoBanco=0;
+  salSemana.forEach(s=>{if(s.bolsa==='banco'&&s.categoria==='Cobertura de efectivo')cubiertoBanco+=(parseFloat(s.monto)||0);});
+  if(cubiertoBanco>0)cardEf.appendChild(lineaCaja('Cubierto desde banco',cubiertoBanco,'var(--green)'));
   if(montoEntregado>0)cardEf.appendChild(lineaCaja('Corte entregado',-montoEntregado,'var(--muted)'));
+  let efDisp2=efectivoDisp+cubiertoBanco;
+  if(entregado)efDisp2=0;
   const dispRow=document.createElement('div');dispRow.className='item';dispRow.style.cssText='padding:12px 14px;border-top:2px solid var(--border)';
-  dispRow.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px;font-weight:700">'+(entregado?'Ya entregado ✓':'Disponible ahora')+'</span><span style="font-family:var(--mono);font-size:20px;font-weight:700;color:'+(entregado?'var(--muted)':'var(--green)')+'">$'+efectivoDisp.toLocaleString(undefined,{maximumFractionDigits:2})+'</span></div>';
+  const dispColor=efDisp2<-0.5?'var(--red)':(entregado?'var(--muted)':'var(--green)');
+  dispRow.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px;font-weight:700">'+(entregado?'Ya entregado ✓':'Disponible ahora')+'</span><span style="font-family:var(--mono);font-size:20px;font-weight:700;color:'+dispColor+'">$'+efDisp2.toLocaleString(undefined,{maximumFractionDigits:2})+'</span></div>';
   cardEf.appendChild(dispRow);
   list.appendChild(cardEf);
 
+  // Botón cubrir faltante con banco (si el efectivo está en negativo)
+  if(!entregado && efDisp2<-0.5){
+    const faltante=Math.abs(efDisp2);
+    const w=document.createElement('div');w.style.cssText='margin:10px 0';
+    const b=document.createElement('button');b.className='btn btn-batch-tras';b.style.cssText='width:100%;padding:13px;font-size:14px';
+    b.textContent='🏦 Cubrir faltante con banco ($'+faltante.toLocaleString(undefined,{maximumFractionDigits:2})+')';
+    b.onclick=()=>cubrirFaltante(faltante);
+    w.appendChild(b);list.appendChild(w);
+  }
+
   // Botón entregar corte
-  if(!entregado && efectivoDisp>0){
+  if(!entregado && efDisp2>0){
     const btnWrap=document.createElement('div');btnWrap.style.cssText='margin:10px 0';
     const b=document.createElement('button');b.className='btn btn-success';b.style.cssText='width:100%;padding:13px;font-size:14px';
-    b.textContent='✓ Ya entregué el corte en efectivo ($'+efectivoDisp.toLocaleString(undefined,{maximumFractionDigits:2})+')';
-    b.onclick=()=>entregarCorte(efectivoDisp);
+    b.textContent='✓ Ya entregué el corte en efectivo ($'+efDisp2.toLocaleString(undefined,{maximumFractionDigits:2})+')';
+    b.onclick=()=>entregarCorte(efDisp2);
     btnWrap.appendChild(b);list.appendChild(btnWrap);
   }
 
@@ -2850,6 +2874,10 @@ async function calcBancoAcumulado(){
       }
     });
   }catch(e){}
+  // Cuentas de DEBEN cobradas por transferencia (de la fecha de corte en adelante)
+  cajaPendPagados.forEach(p=>{
+    if(p.bolsa_pago==='banco'&&(p.fecha_pago||'')>=BANCO_FECHA_CORTE)transferencias+=(parseFloat(p.monto)||0);
+  });
   // Salidas del banco, SOLO de la fecha de corte en adelante
   let salidas=0;
   cajaSalidas.forEach(s=>{if(s.bolsa==='banco'&&s.fecha>=BANCO_FECHA_CORTE)salidas+=(parseFloat(s.monto)||0);});
@@ -2906,6 +2934,19 @@ async function delSalida(id){
     await api('caja_salidas?id=eq.'+id,{method:'DELETE'});
     cajaSalidas=cajaSalidas.filter(x=>x.id!==id);
     renderCaja();showToast('Eliminada');
+  }catch(e){showToast('Error',true);}
+}
+
+async function cubrirFaltante(monto){
+  if(!confirm('¿Cubrir el faltante de $'+monto.toLocaleString(undefined,{maximumFractionDigits:2})+' del efectivo usando el banco? Saldrá del banco y el efectivo quedará en 0.'))return;
+  const sid=semanaId(semanaOffset);
+  const hoy=fmtFecha(new Date());
+  try{
+    await api('caja_salidas',{method:'POST',body:JSON.stringify({
+      fecha:hoy,semana:sid,bolsa:'banco',categoria:'Cobertura de efectivo',
+      concepto:'Cubrir faltante de pagos en efectivo',monto,automatico:true,usuario:currentUser||''
+    })});
+    showToast('Faltante cubierto desde banco ✓');loadCaja();
   }catch(e){showToast('Error',true);}
 }
 
@@ -3005,11 +3046,29 @@ function buildPendCard(p,saldado){
 }
 
 async function togglePendiente(id,saldado){
-  try{
-    await api('pendientes?id=eq.'+id,{method:'PATCH',body:JSON.stringify({saldado})});
-    const p=pendientes.find(x=>x.id===id);if(p)p.saldado=saldado;
-    renderPendientes();showToast(saldado?'Marcado como pagado ✓':'Reabierto');
-  }catch(e){showToast('Error',true);}
+  if(saldado){
+    // Preguntar en qué bolsa entró el dinero
+    const bolsa=await uiChoose('¿Cómo te pagaron?',[
+      {label:'💵 Efectivo',value:'efectivo'},
+      {label:'🏦 Transferencia (banco)',value:'banco'}
+    ],'El dinero se sumará a tu caja');
+    if(!bolsa)return; // canceló
+    const hoy=fmtFecha(new Date());
+    const fd=new Date(hoy+'T12:00:00');
+    const day=(fd.getDay()+6)%7;
+    const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
+    try{
+      await api('pendientes?id=eq.'+id,{method:'PATCH',body:JSON.stringify({saldado:true,bolsa_pago:bolsa,semana_pago:fmtFecha(lunes),fecha_pago:hoy})});
+      const p=pendientes.find(x=>x.id===id);if(p){p.saldado=true;p.bolsa_pago=bolsa;p.semana_pago=fmtFecha(lunes);p.fecha_pago=hoy;}
+      renderPendientes();showToast('Cobrado y sumado a '+(bolsa==='efectivo'?'efectivo':'banco')+' ✓');
+    }catch(e){showToast('Error',true);}
+  }else{
+    try{
+      await api('pendientes?id=eq.'+id,{method:'PATCH',body:JSON.stringify({saldado:false,bolsa_pago:'',semana_pago:'',fecha_pago:null})});
+      const p=pendientes.find(x=>x.id===id);if(p){p.saldado=false;p.bolsa_pago='';p.semana_pago='';}
+      renderPendientes();showToast('Reabierto');
+    }catch(e){showToast('Error',true);}
+  }
 }
 async function delPendiente(id){
   if(!confirm('¿Eliminar esta cuenta?'))return;
