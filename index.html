@@ -2709,6 +2709,7 @@ function renderPagos(){
 
 // ══════════ CAJA (control de dinero) ══════════
 const BANCO_SALDO_INICIAL=43536.09; // saldo del banco al arrancar el sistema
+const BANCO_FECHA_CORTE='2026-06-14'; // solo cuenta movimientos de esta fecha en adelante
 
 let cajaSalidas=[];   // salidas de la semana actual (efectivo) + todas las del banco
 let cortesEntregados=[]; // cortes de efectivo ya entregados
@@ -2836,10 +2837,10 @@ function lineaCaja(lbl,val,color){
 }
 
 async function calcBancoAcumulado(){
-  // Transferencias de TODOS los trabajos del usuario (todas las semanas)
+  // Transferencias de trabajos del usuario, SOLO de la fecha de corte en adelante
   let transferencias=0;
   try{
-    const todos=await api('trabajos?select=pagos,forma_pago,total,cobrado&usuario=eq.'+encodeURIComponent(currentUser||''));
+    const todos=await api('trabajos?select=pagos,forma_pago,total,cobrado,fecha&usuario=eq.'+encodeURIComponent(currentUser||'')+'&fecha=gte.'+BANCO_FECHA_CORTE);
     todos.forEach(t=>{
       const pagosSplit=t.pagos?(Array.isArray(t.pagos)?t.pagos:JSON.parse(t.pagos||'[]')):[];
       if(pagosSplit.length){
@@ -2849,9 +2850,9 @@ async function calcBancoAcumulado(){
       }
     });
   }catch(e){}
-  // Salidas del banco (todas)
+  // Salidas del banco, SOLO de la fecha de corte en adelante
   let salidas=0;
-  cajaSalidas.forEach(s=>{if(s.bolsa==='banco')salidas+=(parseFloat(s.monto)||0);});
+  cajaSalidas.forEach(s=>{if(s.bolsa==='banco'&&s.fecha>=BANCO_FECHA_CORTE)salidas+=(parseFloat(s.monto)||0);});
   const total=BANCO_SALDO_INICIAL+transferencias-salidas;
   return {transferencias,salidas,total};
 }
