@@ -348,6 +348,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="tab" id="tabMat" onclick="switchTab('materiales')">📦 MATERIALES</div>
     <div class="tab" id="tabMov" onclick="switchTab('movimientos')">📊 SALIDAS</div>
     <div class="tab" id="tabTec" onclick="switchTab('tecnicos')">👷 TÉCNICOS</div>
+    <div class="tab" id="tabAgenda" onclick="switchTab('agenda')">📅 AGENDA</div>
   </div>
 
   <div id="secAires">
@@ -410,6 +411,17 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-batch-tras" onclick="openCablePanel()">📋 Material en poder</button>
     </div>
     <div class="list" id="listTec"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+
+  <!-- AGENDA (del calendario) -->
+  <div id="secAgenda" style="display:none">
+    <div class="controls">
+      <button class="btn btn-ghost" onclick="cambiarDiaAgenda(-1)">←</button>
+      <input type="date" id="agendaFecha" onchange="renderAgenda()" style="font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:7px;flex:1">
+      <button class="btn btn-ghost" onclick="cambiarDiaAgenda(1)">→</button>
+      <button class="btn btn-ghost" onclick="loadAgenda(true)">↻</button>
+    </div>
+    <div class="list" id="listAgenda"><div class="loading"><div class="spinner"></div>Cargando agenda...</div></div>
   </div>
 </div>
 
@@ -1081,12 +1093,15 @@ function switchTab(t){
   document.getElementById('secMat').style.display=t==='materiales'?'block':'none';
   document.getElementById('secMov').style.display=t==='movimientos'?'block':'none';
   document.getElementById('secTec').style.display=t==='tecnicos'?'block':'none';
+  document.getElementById('secAgenda').style.display=t==='agenda'?'block':'none';
   document.getElementById('tabAires').className='tab'+(t==='aires'?' active':'');
   document.getElementById('tabMat').className='tab'+(t==='materiales'?' active':'');
   document.getElementById('tabMov').className='tab'+(t==='movimientos'?' active':'');
   document.getElementById('tabTec').className='tab'+(t==='tecnicos'?' active':'');
+  document.getElementById('tabAgenda').className='tab'+(t==='agenda'?' active':'');
   if(t==='movimientos')loadMovimientos();
   if(t==='tecnicos')loadTecnicos();
+  if(t==='agenda')initAgenda();
 }
 
 // ── FILTER ──
@@ -1635,6 +1650,140 @@ function cambiarDiaTec(delta){
   base.setDate(base.getDate()+delta);
   inp.value=fechaLocalISO(base);
   loadTecnicos();
+}
+
+// ════════════ AGENDA (lee Google Calendar via iCal) ════════════
+let agendaEventos=[];   // eventos crudos del calendario
+let agendaEstados={};   // {uid: {estado, cuadrilla}}
+let agendaCargada=false;
+
+function initAgenda(){
+  if(!document.getElementById('agendaFecha').value)document.getElementById('agendaFecha').value=fechaLocalISO(new Date());
+  loadAgenda();
+}
+function cambiarDiaAgenda(delta){
+  const inp=document.getElementById('agendaFecha');
+  const base=inp.value?new Date(inp.value+'T12:00:00'):new Date();
+  base.setDate(base.getDate()+delta);
+  inp.value=fechaLocalISO(base);
+  renderAgenda();
+}
+
+async function loadAgenda(forzar){
+  const list=document.getElementById('listAgenda');
+  // Cargar estados guardados (siempre, para reflejar cambios)
+  try{ const est=await api('agenda_estados?select=*'); agendaEstados={}; est.forEach(e=>{agendaEstados[e.uid]={estado:e.estado,cuadrilla:e.cuadrilla};}); }catch(e){}
+  if(agendaCargada && !forzar){ renderAgenda(); return; }
+  list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando agenda del calendario...</div>';
+  try{
+    const resp=await fetch('/api/agenda');
+    const data=await resp.json();
+    if(data.error){ list.innerHTML='<div class="loading" style="color:var(--red)">No se pudo leer el calendario: '+esc(data.error||'')+'</div>'; return; }
+    agendaEventos=data.eventos||[];
+    agendaCargada=true;
+    renderAgenda();
+  }catch(e){
+    list.innerHTML='<div class="loading" style="color:var(--red)">Error al cargar la agenda. ¿La función está desplegada?</div>';
+  }
+}
+
+function renderAgenda(){
+  const list=document.getElementById('listAgenda');
+  const fSel=document.getElementById('agendaFecha').value;
+  // eventos del día seleccionado
+  const delDia=agendaEventos.filter(e=>{
+    if(!e.inicio)return false;
+    return fechaLocalISO(new Date(e.inicio))===fSel;
+  }).sort((a,b)=>new Date(a.inicio)-new Date(b.inicio));
+
+  const hoy=fechaLocalISO(new Date());
+  list.innerHTML='';
+  const intro=document.createElement('div');
+  intro.style.cssText='font-size:11px;color:var(--muted);margin-bottom:8px;text-align:center';
+  intro.textContent='Trabajos agendados — '+(fSel===hoy?'hoy':fSel)+' · '+delDia.length+' eventos';
+  list.appendChild(intro);
+
+  if(!delDia.length){
+    const e=document.createElement('div');e.className='empty';e.textContent='Sin trabajos agendados este día.';
+    list.appendChild(e);return;
+  }
+  delDia.forEach(ev=>list.appendChild(buildAgendaCard(ev)));
+}
+
+function horaDe(iso){
+  if(!iso)return '';
+  const d=new Date(iso);
+  let h=d.getHours(),m=d.getMinutes();
+  const ap=h>=12?'pm':'am'; h=h%12; if(h===0)h=12;
+  return h+(m?(':'+String(m).padStart(2,'0')):'')+ap;
+}
+
+const AGENDA_COLORES={
+  pendiente:{label:'⚪ Pendiente',color:'var(--muted)',bg:'transparent'},
+  instalado:{label:'🟢 Instalado',color:'var(--green)',bg:'rgba(34,197,94,.12)'},
+  cancelado:{label:'🔴 Cancelado',color:'var(--red)',bg:'rgba(239,68,68,.12)'},
+  reagendado:{label:'🟡 Reagendado',color:'var(--orange)',bg:'rgba(245,158,11,.12)'}
+};
+
+function buildAgendaCard(ev){
+  const est=agendaEstados[ev.uid]||{estado:'pendiente',cuadrilla:''};
+  const colInfo=AGENDA_COLORES[est.estado]||AGENDA_COLORES.pendiente;
+  const card=document.createElement('div');card.className='item';
+  card.style.cssText='padding:12px 14px;border-left:4px solid '+colInfo.color+';background:'+colInfo.bg;
+  const horario=horaDe(ev.inicio)+(ev.fin?(' – '+horaDe(ev.fin)):'');
+  card.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px">'+
+    '<div style="flex:1"><div style="font-size:14px;font-weight:700">'+esc(ev.titulo||'(sin título)')+'</div>'+
+    (ev.lugar?'<div style="font-size:11px;color:var(--muted);margin-top:3px">📍 '+esc(ev.lugar)+'</div>':'')+
+    '<div style="font-size:11px;color:var(--accent2);margin-top:3px">🕐 '+horario+'</div>'+
+    (est.cuadrilla?'<div style="font-size:11px;color:var(--text);margin-top:3px">👷 '+esc(est.cuadrilla)+'</div>':'')+
+    '</div>'+
+    '<div style="font-size:11px;font-weight:700;color:'+colInfo.color+'">'+colInfo.label+'</div></div>';
+  // Acciones
+  const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:10px';
+  const bEstado=document.createElement('button');bEstado.className='btn btn-ghost';bEstado.textContent='Estado';bEstado.style.flex='1';
+  bEstado.onclick=()=>cambiarEstadoAgenda(ev);
+  const bCuad=document.createElement('button');bCuad.className='btn btn-ghost';bCuad.textContent='👷 Asignar';bCuad.style.flex='1';
+  bCuad.onclick=()=>asignarCuadrillaAgenda(ev);
+  acts.appendChild(bEstado);acts.appendChild(bCuad);
+  card.appendChild(acts);
+  return card;
+}
+
+async function cambiarEstadoAgenda(ev){
+  const estado=await uiChoose('Estado del trabajo',[
+    {label:'🟢 Instalado',value:'instalado'},
+    {label:'🔴 Cancelado',value:'cancelado'},
+    {label:'🟡 Reagendado',value:'reagendado'},
+    {label:'⚪ Pendiente',value:'pendiente'}
+  ]);
+  if(!estado)return;
+  await guardarEstadoAgenda(ev.uid,{estado});
+}
+async function asignarCuadrillaAgenda(ev){
+  const cuad=await uiChoose('¿Qué cuadrilla?',[
+    {label:'Alan',value:'Alan'},{label:'Eduardo',value:'Eduardo'},
+    {label:'Henry',value:'Henry'},{label:'David',value:'David'},
+    {label:'— Quitar —',value:''}
+  ]);
+  if(cuad===null)return;
+  await guardarEstadoAgenda(ev.uid,{cuadrilla:cuad});
+}
+
+async function guardarEstadoAgenda(uid,cambios){
+  const actual=agendaEstados[uid]||{estado:'pendiente',cuadrilla:''};
+  const nuevo={estado:cambios.estado!==undefined?cambios.estado:actual.estado, cuadrilla:cambios.cuadrilla!==undefined?cambios.cuadrilla:actual.cuadrilla};
+  agendaEstados[uid]=nuevo;
+  renderAgenda();
+  try{
+    // upsert: buscar si existe
+    const ex=await api('agenda_estados?select=id&uid=eq.'+encodeURIComponent(uid));
+    if(ex.length){
+      await api('agenda_estados?id=eq.'+ex[0].id,{method:'PATCH',body:JSON.stringify({estado:nuevo.estado,cuadrilla:nuevo.cuadrilla,updated_at:new Date().toISOString()})});
+    }else{
+      await api('agenda_estados',{method:'POST',body:JSON.stringify({uid,estado:nuevo.estado,cuadrilla:nuevo.cuadrilla})});
+    }
+    showToast('Guardado ✓');
+  }catch(e){showToast('Error al guardar',true);}
 }
 
 async function loadTecnicos(){
