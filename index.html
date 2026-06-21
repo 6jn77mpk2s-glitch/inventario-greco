@@ -1731,13 +1731,33 @@ function buildAgendaCard(ev){
   const card=document.createElement('div');card.className='item';
   card.style.cssText='padding:12px 14px;border-left:4px solid '+colInfo.color+';background:'+colInfo.bg;
   const horario=horaDe(ev.inicio)+(ev.fin?(' – '+horaDe(ev.fin)):'');
-  card.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px">'+
-    '<div style="flex:1"><div style="font-size:14px;font-weight:700">'+esc(ev.titulo||'(sin título)')+'</div>'+
+  const tieneDesc=ev.descripcion&&ev.descripcion.trim().length>0;
+
+  // Encabezado tocable (expande la descripción)
+  const head=document.createElement('div');
+  head.style.cssText='display:flex;justify-content:space-between;gap:8px;cursor:'+(tieneDesc?'pointer':'default');
+  head.innerHTML='<div style="flex:1"><div style="font-size:14px;font-weight:700">'+esc(ev.titulo||'(sin título)')+(tieneDesc?' <span style="font-size:11px;color:var(--accent2)">▼</span>':'')+'</div>'+
     (ev.lugar?'<div style="font-size:11px;color:var(--muted);margin-top:3px">📍 '+esc(ev.lugar)+'</div>':'')+
     '<div style="font-size:11px;color:var(--accent2);margin-top:3px">🕐 '+horario+'</div>'+
     (est.cuadrilla?'<div style="font-size:11px;color:var(--text);margin-top:3px">👷 '+esc(est.cuadrilla)+'</div>':'')+
     '</div>'+
-    '<div style="font-size:11px;font-weight:700;color:'+colInfo.color+'">'+colInfo.label+'</div></div>';
+    '<div style="font-size:11px;font-weight:700;color:'+colInfo.color+';white-space:nowrap">'+colInfo.label+'</div>';
+  card.appendChild(head);
+
+  // Descripción plegable
+  if(tieneDesc){
+    const desc=document.createElement('div');
+    desc.style.cssText='display:none;margin-top:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5';
+    desc.textContent=ev.descripcion;
+    card.appendChild(desc);
+    head.onclick=()=>{
+      const abierto=desc.style.display!=='none';
+      desc.style.display=abierto?'none':'block';
+      const flecha=head.querySelector('span');
+      if(flecha)flecha.textContent=abierto?'▼':'▲';
+    };
+  }
+
   // Acciones
   const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:10px';
   const bEstado=document.createElement('button');bEstado.className='btn btn-ghost';bEstado.textContent='Estado';bEstado.style.flex='1';

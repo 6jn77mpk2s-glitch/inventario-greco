@@ -13,6 +13,11 @@ function decode(v) {
   if (!v) return '';
   return v.replace(/\\n/gi, ' ').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\').trim();
 }
+// Igual que decode pero conserva los saltos de línea (para descripciones largas)
+function decodeMultiline(v) {
+  if (!v) return '';
+  return v.replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\').trim();
+}
 
 // Parsea una fecha iCal (20260620T090000 o 20260620 o con Z)
 function parseICalDate(val) {
@@ -50,7 +55,7 @@ module.exports = async (req, res) => {
       const key = keyPart.split(';')[0];
       if (key === 'SUMMARY') cur.titulo = decode(value);
       else if (key === 'LOCATION') cur.lugar = decode(value);
-      else if (key === 'DESCRIPTION') cur.descripcion = decode(value);
+      else if (key === 'DESCRIPTION') cur.descripcion = decodeMultiline(value);
       else if (key === 'DTSTART') cur.inicio = parseICalDate(value);
       else if (key === 'DTEND') cur.fin = parseICalDate(value);
       else if (key === 'UID') cur.uid = value.trim();
