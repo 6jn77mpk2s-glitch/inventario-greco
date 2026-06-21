@@ -1241,8 +1241,12 @@ function buildAireEditor(item){
   bCancel.addEventListener('click',()=>toggleEdit('ai',item.id));
   bDel.addEventListener('click',()=>delItem('aire',item.id));
 
+  const bAjuste=document.createElement('button');bAjuste.className='btn btn-batch-tras';bAjuste.style.flex='1';bAjuste.textContent='📋 Ajustar a conteo';
+  bAjuste.addEventListener('click',()=>ajustarConteo('aire',item));
+
   acts.appendChild(bSave);acts.appendChild(bCancel);acts.appendChild(bDel);
-  ed.appendChild(r1);ed.appendChild(r2);ed.appendChild(qBlock);ed.appendChild(fNota);ed.appendChild(acts);
+  const acts2=document.createElement('div');acts2.className='editor-actions';acts2.appendChild(bAjuste);
+  ed.appendChild(r1);ed.appendChild(r2);ed.appendChild(qBlock);ed.appendChild(fNota);ed.appendChild(acts);ed.appendChild(acts2);
   return ed;
 }
 
@@ -1288,9 +1292,39 @@ function buildMatEditor(item){
   bCancel.addEventListener('click',()=>toggleEdit('mt',item.id));
   bDel.addEventListener('click',()=>delItem('mat',item.id));
 
+  const bAjuste=document.createElement('button');bAjuste.className='btn btn-batch-tras';bAjuste.style.flex='1';bAjuste.textContent='📋 Ajustar a conteo';
+  bAjuste.addEventListener('click',()=>ajustarConteo('material',item));
+
   acts.appendChild(bSave);acts.appendChild(bCancel);acts.appendChild(bDel);
-  ed.appendChild(fNombre);ed.appendChild(qBlock);ed.appendChild(fNota);ed.appendChild(acts);
+  const acts2=document.createElement('div');acts2.className='editor-actions';acts2.appendChild(bAjuste);
+  ed.appendChild(fNombre);ed.appendChild(qBlock);ed.appendChild(fNota);ed.appendChild(acts);ed.appendChild(acts2);
   return ed;
+}
+
+// ── AJUSTE POR CONTEO MANUAL ──
+async function ajustarConteo(tipo,item){
+  const actual=item.qty;
+  const nombre=tipo==='aire'?(item.modelo+' '+(item.voltaje||'')+' '+(item.ton||'')):item.nombre;
+  const v=await uiInput('Conteo real de "'+nombre.trim()+'"',{tipo:'numero',valor:actual,sub:'Sistema: '+actual+' · pon cuántos hay físicamente'});
+  if(v===null||v==='')return;
+  const real=parseInt(v);
+  if(isNaN(real)||real<0){showToast('Número inválido',true);return;}
+  const diff=real-actual;
+  if(diff===0){showToast('Ya cuadra, sin cambios');return;}
+  try{
+    if(tipo==='aire'){
+      await api('inventario?id=eq.'+item.id,{method:'PATCH',body:JSON.stringify({qty:real,updated_at:new Date().toISOString()})});
+      item.qty=real;
+      await registrarMovimiento('aire',item.modelo,diff,'ajuste','','Ajuste por conteo manual (era '+actual+', quedó '+real+')','',item.voltaje,item.ton);
+      closeAllEditors();renderAires();updateStats();loadGlobalTotal();
+    }else{
+      await api('materiales?id=eq.'+item.id,{method:'PATCH',body:JSON.stringify({qty:real,updated_at:new Date().toISOString()})});
+      item.qty=real;
+      await registrarMovimiento('material',item.nombre,diff,'ajuste','','Ajuste por conteo manual (era '+actual+', quedó '+real+')','','','');
+      closeAllEditors();renderMats();updateStats();
+    }
+    showToast('Ajustado: '+(diff>0?'+':'')+diff+' ✓');
+  }catch(e){showToast('Error al ajustar',true);}
 }
 
 // ── QTY BLOCK ──
@@ -1666,7 +1700,9 @@ function destLabel(m){
     proveedor:'🚚 Proveedor',
     devolucion:'↩️ Devolución'+(m.tecnico?' ('+m.tecnico+')':''),
     traspaso:'🏢 → '+(BR[m.sucursal_destino]||'otra suc.'),
-    traspaso_in:'🏢 ← '+(BR[m.sucursal_destino]||'otra suc.')
+    traspaso_in:'🏢 ← '+(BR[m.sucursal_destino]||'otra suc.'),
+    ajuste:'📋 Ajuste de conteo',
+    instalado:'✅ Instalado'
   };
   if(!d)return '';
   const cls=(d==='interno')?'tag-tec':(d==='traspaso'||d==='traspaso_in')?'tag-tras':'';
