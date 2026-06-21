@@ -327,6 +327,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="header-top">
       <div class="logo">Climas <span>Greco</span></div>
       <div style="display:flex;gap:6px;align-items:center">
+        <div class="user-pill" onclick="irAModulos()" style="cursor:pointer">⬅ Menú</div>
         <div class="user-pill" id="userPill" onclick="changeUser()">👤 —</div>
         <div class="branch-pill" id="branchPill" onclick="goBack()">— ↩</div>
       </div>
@@ -432,6 +433,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <div class="logo">Climas <span>Greco</span> · 🔧</div>
       <div style="display:flex;gap:6px;align-items:center">
         <div class="user-pill" id="trabUserPill">👤 —</div>
+        <div class="user-pill" onclick="irAModulos()" style="cursor:pointer">⬅ Menú</div>
         <div class="branch-pill sur" onclick="exitTrabajos()" style="cursor:pointer">SALIR ↩</div>
       </div>
     </div>
@@ -1049,6 +1051,16 @@ function goBack(){
   document.getElementById('app').style.display='none';
   document.getElementById('branchScreen').classList.add('show');
   aires=[];mats=[];
+}
+
+// Regresa al selector de módulos (Inventarios / Trabajos) desde cualquier lado
+function irAModulos(){
+  document.getElementById('app').style.display='none';
+  document.getElementById('trabajosApp').style.display='none';
+  document.getElementById('branchScreen').classList.remove('show');
+  document.getElementById('userScreen').classList.remove('show');
+  document.getElementById('moduleScreen').classList.add('show');
+  aires=[];mats=[];trabajos=[];
 }
 
 // ── LOAD ──
@@ -2379,7 +2391,10 @@ function buildTrabajoCard(t){
   act.innerHTML='';
   const acts=document.createElement('div');acts.className='editor-actions';
   if(mio){
-    const bDel=document.createElement('button');bDel.className='btn btn-danger';bDel.style.flex='1';bDel.textContent='🗑 Eliminar trabajo';
+    const bEdit=document.createElement('button');bEdit.className='btn btn-primary';bEdit.style.flex='1';bEdit.textContent='✏️ Editar';
+    bEdit.addEventListener('click',()=>editarTrabajo(t.id));
+    acts.appendChild(bEdit);
+    const bDel=document.createElement('button');bDel.className='btn btn-danger';bDel.textContent='🗑 Eliminar';
     bDel.addEventListener('click',()=>delTrabajo(t.id));
     acts.appendChild(bDel);
   }else{
@@ -2409,6 +2424,45 @@ async function delTrabajo(id){
   }catch(e){showToast('Error al eliminar',true);}
 }
 
+// ── EDITAR TRABAJO ──
+function editarTrabajo(id){
+  const t=trabajos.find(x=>x.id===id);
+  if(!t){showToast('No encontrado',true);return;}
+  if(t.usuario!==currentUser){alert('Solo '+(t.usuario||'quien lo creó')+' puede editarlo');return;}
+  // abrir modal y llenar
+  openTrabajoModal();
+  editandoTrabajoId=id;
+  document.getElementById('trabModalTitle').textContent='✏️ Editar trabajo';
+  document.getElementById('trabFecha').value=t.fecha;
+  document.getElementById('trabCuadrilla').value=t.cuadrilla||'';
+  document.getElementById('trabFactura').checked=!!t.con_factura;
+  // desglose: reconstruir desde lo guardado (sin la lógica de descuento, solo para mostrar/editar montos)
+  const desg=Array.isArray(t.desglose)?t.desglose:JSON.parse(t.desglose||'[]');
+  desgloseItems=desg.map(d=>({
+    tipo:d.tipo||'otro', monto:parseFloat(d.monto)||0,
+    nombreVisible:d.nombre, pagaConcepto:d.pagaConcepto||'', pagaCant:d.pagaCant||0,
+    // sin descuentos al editar (opción A)
+    cuentaEquipo:(d.tipo==='instalacion')
+  }));
+  renderDesglose();
+  // pagos divididos
+  const pg=t.pagos?(Array.isArray(t.pagos)?t.pagos:JSON.parse(t.pagos||'[]')):[];
+  pagosItems=pg.length?pg.map(p=>({forma:p.forma,quien:p.quien||'',monto:parseFloat(p.monto)||0})):[{forma:t.forma_pago||'efectivo',quien:t.quien_cobra||'',monto:parseFloat(t.total)||0}];
+  renderPagosList();
+  // ayudante
+  refreshAyudanteSelect();
+  const ayu=t.ayudante_nombre||t.ayudante||'';
+  if(ayu&&!ayudantes.includes(ayu)){ayudantes.push(ayu);refreshAyudanteSelect();}
+  document.getElementById('trabAyudante').value=ayu;
+  // pagos
+  const pt=document.getElementById('trabPagoTec');pt.value=parseFloat(t.pago_tecnico)||0;pt.dataset.touched='1';
+  const pa=document.getElementById('trabPagoAyu');pa.value=parseFloat(t.pago_ayudante)||0;pa.dataset.touched='1';
+  document.getElementById('trabPagoAtras').value=parseFloat(t.pago_atrasado)||0;
+  document.getElementById('trabPagoAtrasNota').value=t.pago_atrasado_nota||'';
+  document.getElementById('trabNota').value=t.nota||'';
+  recalcTrabajo();
+}
+
 // ── MODAL NUEVO TRABAJO ──
 // Precios de venta al cliente (fijos)
 const PRECIOS_MATERIAL={
@@ -2428,7 +2482,10 @@ const MAP_MATERIAL_SALDO={
 
 let desgloseItems=[]; // [{tipo, ...campos, monto, nombreVisible, pagaTecnico, descuentaMaterial}]
 
+let editandoTrabajoId=null;
 function openTrabajoModal(){
+  editandoTrabajoId=null;
+  document.getElementById('trabModalTitle').textContent='➕ Nuevo trabajo';
   document.getElementById('trabFecha').value=fmtFecha(new Date());
   // Cuadrilla por defecto = nombre del perfil si es técnico, si no sin seleccionar
   const tecnicos=['Alan','Eduardo','Henry','David'];
@@ -2768,30 +2825,37 @@ async function guardarTrabajo(){
   const day=(fd.getDay()+6)%7;
   const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
   const sid=fmtFecha(lunes);
+  const payload={
+    fecha,semana:sid,cuadrilla,ayudante,ayudante_nombre:ayudante,
+    desglose:JSON.stringify(desgGuardar),
+    con_factura:factura,subtotal,total,cobrado:total,
+    forma_pago:forma,quien_cobra:quienCobra,pagos:JSON.stringify(pagosLimpios),
+    pago_tecnico:pagoTec,pago_ayudante:pagoAyu,
+    pago_atrasado:pagoAtras,pago_atrasado_nota:pagoAtrasNota,
+    nota,usuario:currentUser||''
+  };
   try{
-    const rows=await api('trabajos',{method:'POST',body:JSON.stringify({
-      fecha,semana:sid,cuadrilla,ayudante,ayudante_nombre:ayudante,
-      desglose:JSON.stringify(desgGuardar),
-      con_factura:factura,subtotal,total,cobrado:total,
-      forma_pago:forma,quien_cobra:quienCobra,pagos:JSON.stringify(pagosLimpios),
-      pago_tecnico:pagoTec,pago_ayudante:pagoAyu,
-      pago_atrasado:pagoAtras,pago_atrasado_nota:pagoAtrasNota,
-      nota,usuario:currentUser||''
-    })});
-    // Descontar material del saldo del técnico de la cuadrilla
-    for(const d of desgloseItems){
-      if(d.descuentaSaldo&&d.descuentaCant>0){
-        await ajustarMaterialTecnico(cuadrilla,d.descuentaSaldo,-d.descuentaCant);
+    if(editandoTrabajoId){
+      // EDITAR: actualizar sin tocar descuentos de material (opción A)
+      await api('trabajos?id=eq.'+editandoTrabajoId,{method:'PATCH',body:JSON.stringify(payload)});
+      if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
+      closeTrabModal();
+      showToast('Trabajo actualizado ✓');
+      editandoTrabajoId=null;
+      loadTrabajos();
+    }else{
+      const rows=await api('trabajos',{method:'POST',body:JSON.stringify(payload)});
+      // Descontar material del saldo del técnico de la cuadrilla (solo al crear)
+      for(const d of desgloseItems){
+        if(d.descuentaSaldo&&d.descuentaCant>0){await ajustarMaterialTecnico(cuadrilla,d.descuentaSaldo,-d.descuentaCant);}
+        if(d.descuentaCableMetros>0){await ajustarCableTecnico(cuadrilla,-d.descuentaCableMetros);}
       }
-      if(d.descuentaCableMetros>0){
-        await ajustarCableTecnico(cuadrilla,-d.descuentaCableMetros);
-      }
+      if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
+      closeTrabModal();
+      showToast('Trabajo guardado ✓');
+      if(sid===semanaId(semanaOffset)){trabajos.push(rows[0]);renderSemana();renderResumenSemana();}
+      else{showToast('Guardado en otra semana');}
     }
-    if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
-    closeTrabModal();
-    showToast('Trabajo guardado ✓');
-    if(sid===semanaId(semanaOffset)){trabajos.push(rows[0]);renderSemana();renderResumenSemana();}
-    else{showToast('Guardado en otra semana');}
   }catch(e){showToast('Error al guardar',true);}
 }
 
