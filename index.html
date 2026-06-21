@@ -504,6 +504,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   <div id="secCaja" style="display:none">
     <div class="controls">
       <button class="btn btn-primary" onclick="openSalidaModal()">− Registrar salida</button>
+      <button class="btn btn-success" onclick="openEntradaModal()">+ Registrar entrada</button>
       <button class="btn btn-batch-in" onclick="intercambioDigital()">🔄 Cambié digital por efectivo</button>
       <button class="btn btn-ghost" onclick="loadCaja()" style="margin-left:auto">↻</button>
     </div>
@@ -638,6 +639,27 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="editor-actions">
       <button class="btn btn-primary" style="flex:1" onclick="guardarSalida()">Guardar salida</button>
       <button class="btn btn-cancel" onclick="closeSalida()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ENTRADA DE CAJA -->
+<div class="modal" id="modalEntrada" onclick="closeEntradaBg(event)">
+  <div class="modal-sheet">
+    <div class="modal-title">+ Registrar entrada de caja</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:-4px">Dinero que te llega ajeno a los trabajos</div>
+    <div class="field"><label>¿A qué bolsa entra?</label>
+      <select id="entradaBolsa">
+        <option value="banco">🏦 Banco / transferencias</option>
+        <option value="efectivo">💵 Efectivo</option>
+      </select>
+    </div>
+    <div class="field"><label>Concepto</label><input type="text" id="entradaConcepto" placeholder="ej. transferencia de un préstamo"></div>
+    <div class="field"><label>Monto</label><input type="number" id="entradaMonto" placeholder="0" inputmode="decimal"></div>
+    <div class="field"><label>Fecha</label><input type="date" id="entradaFecha"></div>
+    <div class="editor-actions">
+      <button class="btn btn-success" style="flex:1" onclick="guardarEntrada()">Guardar entrada</button>
+      <button class="btn btn-cancel" onclick="closeEntrada()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -3082,6 +3104,10 @@ function calcEntradasSemana(){
   cajaSalidas.forEach(s=>{
     if(s.bolsa==='banco'&&s.categoria==='Cambio a efectivo'&&s.semana===sid)efectivo+=(parseFloat(s.monto)||0);
   });
+  // Entradas ajenas a trabajos (efectivo) de esta semana
+  cajaSalidas.forEach(s=>{
+    if(s.tipo==='entrada'&&s.bolsa==='efectivo'&&s.semana===sid)efectivo+=(parseFloat(s.monto)||0);
+  });
   return {efectivo,banco};
 }
 
@@ -3103,7 +3129,7 @@ function renderCaja(){
   // Salidas manuales de la semana por bolsa
   const salSemana=cajaSalidas.filter(s=>s.semana===sid);
   let salEfManual=0;
-  salSemana.forEach(s=>{if(s.bolsa==='efectivo')salEfManual+=(parseFloat(s.monto)||0);});
+  salSemana.forEach(s=>{if(s.bolsa==='efectivo'&&s.tipo!=='entrada')salEfManual+=(parseFloat(s.monto)||0);});
 
   // ¿ya se entregó el corte de efectivo de esta semana?
   const entregado=cortesEntregados.length>0;
@@ -3132,6 +3158,10 @@ function renderCaja(){
   let cambioEf=0;
   salSemana.forEach(s=>{if(s.bolsa==='banco'&&s.categoria==='Cambio a efectivo')cambioEf+=(parseFloat(s.monto)||0);});
   if(cambioEf>0)cardEf.appendChild(lineaCaja('Cambié digital por efectivo',cambioEf,'var(--green)'));
+  // Entradas ajenas (efectivo)
+  let entrEf=0;
+  salSemana.forEach(s=>{if(s.tipo==='entrada'&&s.bolsa==='efectivo')entrEf+=(parseFloat(s.monto)||0);});
+  if(entrEf>0)cardEf.appendChild(lineaCaja('Entradas ajenas',entrEf,'var(--green)'));
   if(montoEntregado>0)cardEf.appendChild(lineaCaja('Corte entregado',-montoEntregado,'var(--muted)'));
   let efDisp2=efectivoDisp+cubiertoBanco;
   if(entregado)efDisp2=0;
@@ -3177,13 +3207,22 @@ function renderCaja(){
     cardB.appendChild(r);
   });
 
-  // ── Lista de salidas de la semana (excluye movimientos internos auto) ──
-  const salManual=salSemana.filter(s=>s.categoria!=='Cobertura de efectivo'&&s.categoria!=='Cambio a efectivo');
+  // ── Lista de salidas de la semana (excluye movimientos internos auto y entradas) ──
+  const salManual=salSemana.filter(s=>s.categoria!=='Cobertura de efectivo'&&s.categoria!=='Cambio a efectivo'&&s.tipo!=='entrada');
+  const entradas2=salSemana.filter(s=>s.tipo==='entrada');
   if(salManual.length){
     const grp=document.createElement('div');grp.className='marca-group';
     const h=document.createElement('div');h.className='marca-header';h.style.color='var(--muted)';h.textContent='SALIDAS REGISTRADAS (esta semana)';
     grp.appendChild(h);
     salManual.forEach(s=>grp.appendChild(buildSalidaCard(s)));
+    list.appendChild(grp);
+  }
+  // ── Entradas ajenas (esta semana) ──
+  if(entradas2.length){
+    const grp=document.createElement('div');grp.className='marca-group';
+    const h=document.createElement('div');h.className='marca-header';h.style.color='var(--green)';h.textContent='ENTRADAS AJENAS (esta semana)';
+    grp.appendChild(h);
+    entradas2.forEach(s=>grp.appendChild(buildSalidaCard(s)));
     list.appendChild(grp);
   }
   // ── Movimientos internos (cambios/coberturas) ──
@@ -3222,9 +3261,13 @@ async function calcBancoAcumulado(){
   cajaPendPagados.forEach(p=>{
     if(p.bolsa_pago==='banco'&&(p.fecha_pago||'')>=BANCO_FECHA_CORTE)transferencias+=(parseFloat(p.monto)||0);
   });
-  // Salidas del banco, SOLO de la fecha de corte en adelante
+  // Entradas ajenas a trabajos (banco), de la fecha de corte en adelante
+  cajaSalidas.forEach(s=>{
+    if(s.tipo==='entrada'&&s.bolsa==='banco'&&s.fecha>=BANCO_FECHA_CORTE)transferencias+=(parseFloat(s.monto)||0);
+  });
+  // Salidas del banco (excluye entradas), SOLO de la fecha de corte en adelante
   let salidas=0;
-  cajaSalidas.forEach(s=>{if(s.bolsa==='banco'&&s.fecha>=BANCO_FECHA_CORTE)salidas+=(parseFloat(s.monto)||0);});
+  cajaSalidas.forEach(s=>{if(s.bolsa==='banco'&&s.tipo!=='entrada'&&s.fecha>=BANCO_FECHA_CORTE)salidas+=(parseFloat(s.monto)||0);});
   const total=BANCO_SALDO_INICIAL+transferencias-salidas;
   return {transferencias,salidas,total};
 }
@@ -3234,7 +3277,10 @@ function buildSalidaCard(s){
   const d=new Date(s.fecha+'T12:00:00');
   const fecha=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
   const bolsa=s.bolsa==='efectivo'?'💵':'🏦';
-  card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div style="flex:1"><div style="font-size:13px;font-weight:600">'+bolsa+' '+esc(s.categoria)+'</div>'+(s.concepto?'<div style="font-size:11px;color:var(--muted)">'+esc(s.concepto)+'</div>':'')+'<div style="font-size:10px;color:var(--muted)">'+fecha+'</div></div><div style="font-family:var(--mono);font-size:16px;color:var(--orange)">-$'+(parseFloat(s.monto)||0).toLocaleString()+'</div></div>';
+  const esEntrada=(s.tipo==='entrada');
+  const signo=esEntrada?'+':'-';
+  const color=esEntrada?'var(--green)':'var(--orange)';
+  card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div style="flex:1"><div style="font-size:13px;font-weight:600">'+bolsa+' '+esc(s.categoria)+'</div>'+(s.concepto?'<div style="font-size:11px;color:var(--muted)">'+esc(s.concepto)+'</div>':'')+'<div style="font-size:10px;color:var(--muted)">'+fecha+'</div></div><div style="font-family:var(--mono);font-size:16px;color:'+color+'">'+signo+'$'+(parseFloat(s.monto)||0).toLocaleString()+'</div></div>';
   const acts=document.createElement('div');acts.style.cssText='margin-top:6px';
   const del=document.createElement('button');del.className='btn btn-danger';del.textContent='🗑 Eliminar';del.style.cssText='font-size:11px;padding:4px 10px';
   del.onclick=()=>delSalida(s.id);
@@ -3253,6 +3299,34 @@ function openSalidaModal(){
 }
 function closeSalida(){document.getElementById('modalSalida').classList.remove('open');}
 function closeSalidaBg(e){if(e.target===document.getElementById('modalSalida'))closeSalida();}
+
+// ── Modal entrada (dinero ajeno a trabajos) ──
+function openEntradaModal(){
+  document.getElementById('entradaBolsa').value='banco';
+  document.getElementById('entradaConcepto').value='';
+  document.getElementById('entradaMonto').value='';
+  document.getElementById('entradaFecha').value=fmtFecha(new Date());
+  document.getElementById('modalEntrada').classList.add('open');
+}
+function closeEntrada(){document.getElementById('modalEntrada').classList.remove('open');}
+function closeEntradaBg(e){if(e.target===document.getElementById('modalEntrada'))closeEntrada();}
+
+async function guardarEntrada(){
+  const bolsa=document.getElementById('entradaBolsa').value;
+  const concepto=document.getElementById('entradaConcepto').value.trim();
+  const monto=parseFloat(document.getElementById('entradaMonto').value)||0;
+  const fecha=document.getElementById('entradaFecha').value;
+  if(!monto||monto<=0){showToast('Pon el monto',true);return;}
+  const fd=new Date(fecha+'T12:00:00');
+  const day=(fd.getDay()+6)%7;
+  const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
+  try{
+    await api('caja_salidas',{method:'POST',body:JSON.stringify({
+      fecha,semana:fmtFecha(lunes),bolsa,categoria:'Entrada',concepto,monto,automatico:false,tipo:'entrada',usuario:currentUser||''
+    })});
+    closeEntrada();showToast('Entrada registrada ✓');loadCaja();
+  }catch(e){showToast('Error',true);}
+}
 
 async function guardarSalida(){
   const bolsa=document.getElementById('salidaBolsa').value;
