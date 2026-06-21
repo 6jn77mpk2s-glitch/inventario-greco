@@ -1672,7 +1672,7 @@ function cambiarDiaAgenda(delta){
 async function loadAgenda(forzar){
   const list=document.getElementById('listAgenda');
   // Cargar estados guardados (siempre, para reflejar cambios)
-  try{ const est=await api('agenda_estados?select=*'); agendaEstados={}; est.forEach(e=>{agendaEstados[e.uid]={estado:e.estado,cuadrilla:e.cuadrilla};}); }catch(e){}
+  try{ const est=await api('agenda_estados?select=*'); agendaEstados={}; est.forEach(e=>{agendaEstados[e.uid]={estado:e.estado,cuadrilla:e.cuadrilla,aire:e.aire||''};}); }catch(e){}
   if(agendaCargada && !forzar){ renderAgenda(); return; }
   list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando agenda del calendario...</div>';
   try{
@@ -1740,6 +1740,7 @@ function buildAgendaCard(ev){
     (ev.lugar?'<div style="font-size:11px;color:var(--muted);margin-top:3px">📍 '+esc(ev.lugar)+'</div>':'')+
     '<div style="font-size:11px;color:var(--accent2);margin-top:3px">🕐 '+horario+'</div>'+
     (est.cuadrilla?'<div style="font-size:11px;color:var(--text);margin-top:3px">👷 '+esc(est.cuadrilla)+'</div>':'')+
+    (est.aire?'<div style="font-size:11px;color:var(--green);margin-top:3px">🌬 '+esc(est.aire)+'</div>':'')+
     '</div>'+
     '<div style="font-size:11px;font-weight:700;color:'+colInfo.color+';white-space:nowrap">'+colInfo.label+'</div>';
   card.appendChild(head);
@@ -1762,7 +1763,9 @@ function buildAgendaCard(ev){
   const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:10px';
   const bEstado=document.createElement('button');bEstado.className='btn btn-ghost';bEstado.textContent='Estado';bEstado.style.flex='1';
   bEstado.onclick=()=>cambiarEstadoAgenda(ev);
-  const bCuad=document.createElement('button');bCuad.className='btn btn-ghost';bCuad.textContent='👷 Asignar';bCuad.style.flex='1';
+  const bCuad=document.createElement('button');bCuad.className='btn btn-ghost';bCuad.style.flex='1';
+  bCuad.textContent=est.cuadrilla?('👷 '+est.cuadrilla):'👷 Asignar';
+  if(est.cuadrilla){bCuad.style.borderColor='var(--accent2)';bCuad.style.color='var(--accent2)';}
   bCuad.onclick=()=>asignarCuadrillaAgenda(ev);
   acts.appendChild(bEstado);acts.appendChild(bCuad);
   card.appendChild(acts);
@@ -1777,7 +1780,61 @@ async function cambiarEstadoAgenda(ev){
     {label:'⚪ Pendiente',value:'pendiente'}
   ]);
   if(!estado)return;
+  // Si se marca instalado, ofrecer ligar un aire de los que trae el técnico ese día
+  if(estado==='instalado'){
+    const est=agendaEstados[ev.uid]||{};
+    const cuad=est.cuadrilla;
+    if(cuad){
+      await ligarAireInstalado(ev,cuad);
+      return; // ligarAireInstalado guarda el estado
+    }else{
+      // sin cuadrilla asignada: marcar instalado sin aire
+      showToast('Tip: asigna cuadrilla para ligar el aire');
+    }
+  }
   await guardarEstadoAgenda(ev.uid,{estado});
+}
+
+// Pregunta qué aire se instaló (de los que trae el técnico el día del trabajo)
+async function ligarAireInstalado(ev,cuad){
+  const fechaTrabajo=ev.inicio?fechaLocalISO(new Date(ev.inicio)):fechaLocalISO(new Date());
+  // buscar aires asignados a ese técnico ese día (movimientos interno aire)
+  let opciones=[{label:'🛠️ Ninguno / solo mantenimiento',value:'__ninguno__'}];
+  try{
+    const movs=await api('movimientos?select=*&tecnico=eq.'+encodeURIComponent(cuad)+'&tipo=eq.aire&destino=eq.interno');
+    const delDia=movs.filter(m=>m.fecha&&fechaLocalISO(new Date(m.fecha))===fechaTrabajo);
+    // agrupar por modelo+volt+ton
+    const vistos={};
+    delDia.forEach(m=>{
+      const key=m.nombre+'|'+(m.voltaje||'')+'|'+(m.ton||'');
+      if(!vistos[key]){
+        vistos[key]=true;
+        const label=m.nombre+(m.voltaje||m.ton?' ('+(m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||'')+')':'');
+        opciones.push({label:'🌬 '+label,value:JSON.stringify({nombre:m.nombre,voltaje:m.voltaje||'',ton:m.ton||''})});
+      }
+    });
+  }catch(e){}
+
+  const sel=await uiChoose('¿Qué aire se instaló?',opciones,'De lo que trae '+cuad+' ese día');
+  if(sel===null)return; // canceló, no cambia nada
+  let aireStr='';
+  if(sel==='__ninguno__'){
+    aireStr='Solo mantenimiento';
+  }else{
+    const a=JSON.parse(sel);
+    aireStr=a.nombre+(a.voltaje||a.ton?' ('+(a.voltaje||'')+(a.voltaje&&a.ton?' · ':'')+(a.ton||'')+')':'');
+    // descontar 1 de lo que trae el técnico: registrar una devolución/instalación que reste del conteo del día
+    try{
+      await api('movimientos',{method:'POST',body:JSON.stringify({
+        sucursal:'', tipo:'aire', nombre:a.nombre, cantidad:-1,
+        destino:'instalado', tecnico:cuad, motivo:'Instalado: '+(ev.titulo||''),
+        sucursal_destino:'', usuario:currentUser||'',
+        voltaje:a.voltaje||'', ton:a.ton||'', lote:'',
+        fecha:new Date(fechaTrabajo+'T12:00:00').toISOString()
+      })});
+    }catch(e){}
+  }
+  await guardarEstadoAgenda(ev.uid,{estado:'instalado',aire:aireStr});
 }
 async function asignarCuadrillaAgenda(ev){
   const cuad=await uiChoose('¿Qué cuadrilla?',[
@@ -1790,17 +1847,21 @@ async function asignarCuadrillaAgenda(ev){
 }
 
 async function guardarEstadoAgenda(uid,cambios){
-  const actual=agendaEstados[uid]||{estado:'pendiente',cuadrilla:''};
-  const nuevo={estado:cambios.estado!==undefined?cambios.estado:actual.estado, cuadrilla:cambios.cuadrilla!==undefined?cambios.cuadrilla:actual.cuadrilla};
+  const actual=agendaEstados[uid]||{estado:'pendiente',cuadrilla:'',aire:''};
+  const nuevo={
+    estado:cambios.estado!==undefined?cambios.estado:actual.estado,
+    cuadrilla:cambios.cuadrilla!==undefined?cambios.cuadrilla:actual.cuadrilla,
+    aire:cambios.aire!==undefined?cambios.aire:(actual.aire||'')
+  };
   agendaEstados[uid]=nuevo;
   renderAgenda();
+  if(activeTab==='tecnicos')loadTecnicos();
   try{
-    // upsert: buscar si existe
     const ex=await api('agenda_estados?select=id&uid=eq.'+encodeURIComponent(uid));
     if(ex.length){
-      await api('agenda_estados?id=eq.'+ex[0].id,{method:'PATCH',body:JSON.stringify({estado:nuevo.estado,cuadrilla:nuevo.cuadrilla,updated_at:new Date().toISOString()})});
+      await api('agenda_estados?id=eq.'+ex[0].id,{method:'PATCH',body:JSON.stringify({estado:nuevo.estado,cuadrilla:nuevo.cuadrilla,aire:nuevo.aire,updated_at:new Date().toISOString()})});
     }else{
-      await api('agenda_estados',{method:'POST',body:JSON.stringify({uid,estado:nuevo.estado,cuadrilla:nuevo.cuadrilla})});
+      await api('agenda_estados',{method:'POST',body:JSON.stringify({uid,estado:nuevo.estado,cuadrilla:nuevo.cuadrilla,aire:nuevo.aire})});
     }
     showToast('Guardado ✓');
   }catch(e){showToast('Error al guardar',true);}
@@ -1814,6 +1875,15 @@ async function loadTecnicos(){
   list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
     const movs=await api('movimientos?select=*');
+    // Cargar agenda (eventos + estados) para mostrar trabajos asignados
+    try{
+      const est=await api('agenda_estados?select=*');
+      agendaEstados={}; est.forEach(e=>{agendaEstados[e.uid]={estado:e.estado,cuadrilla:e.cuadrilla,aire:e.aire||''};});
+      if(!agendaCargada){
+        const resp=await fetch('/api/agenda'); const data=await resp.json();
+        if(data.eventos){agendaEventos=data.eventos;agendaCargada=true;}
+      }
+    }catch(e){}
     renderTecnicos(movs);
   }catch(e){
     list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
@@ -1838,7 +1908,7 @@ function renderTecnicos(movs){
   delDia.forEach(m=>{
     if(!m.tecnico||data[m.tecnico]===undefined)return;
     const esAsignacion=(m.destino==='interno');
-    const esDevol=(m.destino==='devolucion');
+    const esDevol=(m.destino==='devolucion'||m.destino==='instalado');
     if(!esAsignacion&&!esDevol)return;
     const sign=esDevol?-1:1;
     const cant=Math.abs(m.cantidad)*sign;
@@ -1894,6 +1964,28 @@ function renderTecnicos(movs){
     if(!airesKeys.length&&!matKeys.length){
       const det=document.createElement('div');det.className='tec-detail';
       det.innerHTML='<div style="font-size:11px;color:var(--muted)">Nada asignado este día</div>';
+      card.appendChild(det);
+    }
+    // Trabajos de agenda asignados a este técnico ese día
+    const trabajosAg=agendaEventos.filter(ev=>{
+      if(!ev.inicio)return false;
+      if(fechaLocalISO(new Date(ev.inicio))!==tecFechaSel)return false;
+      const e=agendaEstados[ev.uid];
+      return e&&e.cuadrilla===t;
+    });
+    if(trabajosAg.length){
+      const det=document.createElement('div');det.className='tec-detail';
+      const sub=document.createElement('div');sub.style.cssText='font-size:9px;color:#c084fc;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px';sub.textContent='Trabajos agendados';
+      det.appendChild(sub);
+      trabajosAg.forEach(ev=>{
+        const e=agendaEstados[ev.uid]||{};
+        const ci=AGENDA_COLORES[e.estado]||AGENDA_COLORES.pendiente;
+        const line=document.createElement('div');line.style.cssText='font-size:11px;margin-bottom:4px;padding-left:6px;border-left:2px solid '+ci.color;
+        line.innerHTML='<div style="color:var(--text)">'+esc(ev.titulo||'')+' <span style="color:'+ci.color+'">'+ci.label+'</span></div>'+
+          (ev.lugar?'<div style="color:var(--muted);font-size:10px">📍 '+esc(ev.lugar)+'</div>':'')+
+          (e.aire?'<div style="color:var(--green);font-size:10px">🌬 '+esc(e.aire)+'</div>':'');
+        det.appendChild(line);
+      });
       card.appendChild(det);
     }
     list.appendChild(card);
