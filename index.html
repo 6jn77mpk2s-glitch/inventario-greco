@@ -2918,7 +2918,7 @@ async function guardarTrabajo(){
   const pagoAtrasNota=document.getElementById('trabPagoAtrasNota').value.trim();
   const nota=document.getElementById('trabNota').value.trim();
   // desglose simple para guardar
-  const desgGuardar=desgloseItems.map(d=>({nombre:d.nombreVisible,monto:d.monto||0,tipo:d.tipo,pagaConcepto:d.pagaConcepto||'',pagaCant:d.pagaCant||(d.pagaConcepto?1:0)}));
+  const desgGuardar=desgloseItems.map(d=>({nombre:d.nombreVisible,monto:d.monto||0,tipo:d.tipo,subtipo:d.subtipo||'',cantidad:d.cantidad||0,metros:d.metros||0,pagaConcepto:d.pagaConcepto||'',pagaCant:d.pagaCant||(d.pagaConcepto?1:0)}));
   const fd=new Date(fecha+'T12:00:00');
   const day=(fd.getDay()+6)%7;
   const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
@@ -2995,7 +2995,11 @@ function switchTrabTab(t){
 // ── CORTE SEMANAL ──
 function renderCorte(){
   const list=document.getElementById('listCorte');
-  if(!trabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.</div>';return;}
+  if(!trabajos.length){
+    list.innerHTML='<div class="empty">Sin trabajos tuyos esta semana.</div>';
+    renderMaterialUsado(list); // pero el material es de todas las cuadrillas
+    return;
+  }
   let cobrado=0,pagoTec=0,pagoAyu=0,pagoAtras=0;
   const porTecnico={},porAyudante={};
   const porForma={efectivo:0,transferencia:0,tarjeta:0,cobra_otro:0,local:0};
@@ -3044,6 +3048,105 @@ function renderCorte(){
   ]));
   const cobRows=Object.keys(porCobrador).map(k=>[k,porCobrador[k],'#c084fc']);
   if(cobRows.length)list.appendChild(corteBlock('👤 Por entregar (lo cobra cada quien)',cobRows));
+
+  // Material usado (todas las cuadrillas) — se carga aparte
+  renderMaterialUsado(list);
+}
+
+// Cuenta brakes/bases/centros/cable usados en la semana, total y por cuadrilla (TODAS las cuadrillas)
+async function renderMaterialUsado(list){
+  const sid=semanaId(semanaOffset);
+  const ph=document.createElement('div');ph.className='marca-group';
+  ph.innerHTML='<div class="marca-header" style="color:var(--orange)">🧰 Material usado (todas las cuadrillas)</div><div class="item" style="padding:11px 14px;font-size:11px;color:var(--muted)">Cargando...</div>';
+  list.appendChild(ph);
+  let todos=[];
+  try{ todos=await api('trabajos?select=cuadrilla,desglose&semana=eq.'+sid); }catch(e){ ph.remove(); return; }
+
+  // contadores
+  const cats=[
+    {key:'brake_ranura',label:'Brake ranura'},
+    {key:'brake_patas',label:'Brake patas'},
+    {key:'base_1',label:'Base 1 ton'},
+    {key:'base_2',label:'Base 2 ton'},
+    {key:'centro_2',label:'Centro 2 past.'},
+    {key:'centro_4',label:'Centro 4 past.'},
+    {key:'cable',label:'Cable (metros)'}
+  ];
+  const total={}; const porCuad={};
+  cats.forEach(c=>total[c.key]=0);
+
+  function contar(desg,cuad){
+    if(!porCuad[cuad]){porCuad[cuad]={};cats.forEach(c=>porCuad[cuad][c.key]=0);}
+    desg.forEach(d=>{
+      let key=null,cant=0;
+      if(d.tipo==='brake'){
+        const st=d.subtipo||parseSubFromName(d.nombre,'brake');
+        key='brake_'+(st||'ranura'); cant=d.cantidad||parseCantFromName(d.nombre);
+      }else if(d.tipo==='base'){
+        const st=d.subtipo||parseSubFromName(d.nombre,'base');
+        key='base_'+(st||'1'); cant=d.cantidad||parseCantFromName(d.nombre);
+      }else if(d.tipo==='centro'){
+        const st=d.subtipo||parseSubFromName(d.nombre,'centro');
+        key='centro_'+(st||'2'); cant=d.cantidad||parseCantFromName(d.nombre);
+      }else if(d.tipo==='cable'){
+        key='cable'; cant=d.metros||parseMetrosFromName(d.nombre);
+      }
+      if(key&&total[key]!==undefined){total[key]+=cant;porCuad[cuad][key]+=cant;}
+    });
+  }
+
+  todos.forEach(t=>{
+    const cuad=t.cuadrilla||'(sin cuadrilla)';
+    let desg=[]; try{desg=Array.isArray(t.desglose)?t.desglose:JSON.parse(t.desglose||'[]');}catch(e){}
+    contar(desg,cuad);
+  });
+
+  ph.remove();
+  // bloque total
+  const totalRows=cats.map(c=>[c.label,total[c.key],'var(--text)']).filter(r=>r[1]>0);
+  if(!totalRows.length){
+    const blk=document.createElement('div');blk.className='marca-group';
+    blk.innerHTML='<div class="marca-header" style="color:var(--orange)">🧰 Material usado (todas las cuadrillas)</div><div class="item" style="padding:11px 14px;font-size:11px;color:var(--muted)">Sin material registrado esta semana.</div>';
+    list.appendChild(blk);
+    return;
+  }
+  list.appendChild(corteBlockPlain('🧰 Material usado — TOTAL semana',totalRows));
+
+  // por cuadrilla
+  Object.keys(porCuad).sort().forEach(cuad=>{
+    const rows=cats.map(c=>[c.label,porCuad[cuad][c.key],'var(--text)']).filter(r=>r[1]>0);
+    if(rows.length)list.appendChild(corteBlockPlain('🧰 '+cuad,rows));
+  });
+}
+
+// corteBlock pero sin formato de dinero (números planos)
+function corteBlockPlain(title,rows){
+  const grp=document.createElement('div');grp.className='marca-group';
+  const hdr=document.createElement('div');hdr.className='marca-header';hdr.style.color='var(--orange)';hdr.textContent=title;
+  grp.appendChild(hdr);
+  rows.forEach(r=>{
+    const row=document.createElement('div');row.className='item';row.style.padding='11px 14px';
+    row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px">'+esc(r[0])+'</span><span style="font-family:var(--mono);font-size:16px;font-weight:600;color:'+(r[2]||'var(--text)')+'">'+r[1]+'</span></div>';
+    grp.appendChild(row);
+  });
+  return grp;
+}
+
+// Helpers para trabajos viejos sin subtipo/cantidad guardados (parsea del nombre visible)
+function parseSubFromName(n,tipo){
+  n=(n||'').toLowerCase();
+  if(tipo==='brake')return n.includes('patas')?'patas':'ranura';
+  if(tipo==='base')return n.includes('2')?'2':'1';
+  if(tipo==='centro')return n.includes('4')?'4':'2';
+  return '';
+}
+function parseCantFromName(n){
+  const m=(n||'').match(/x\s*(\d+)/i);
+  return m?parseInt(m[1]):1;
+}
+function parseMetrosFromName(n){
+  const m=(n||'').match(/(\d+(?:\.\d+)?)\s*m/i);
+  return m?parseFloat(m[1]):0;
 }
 
 // ── PAGOS (lo que gana cada quien) ──
