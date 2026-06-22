@@ -2565,7 +2565,7 @@ function editarTrabajo(id){
 // Precios de venta al cliente (fijos)
 const PRECIOS_MATERIAL={
   'brake':150,
-  'base_1':700,'base_2':800,
+  'base_1':700,'base_2':800,'base_goma':600,'base_metal':800,
   'centro_2':600,'centro_4':900,
   'cable_metro':60
 };
@@ -2575,6 +2575,7 @@ const MAP_MATERIAL_SALDO={
   'brake_patas':'Breaker de patas',
   'brake_ranura':'Breaker de ranura',
   'base_1':'Base 1 ton','base_2':'Base 2 ton',
+  'base_goma':'Base de techo goma','base_metal':'Base de techo metal',
   'centro_2':'Centro de carga 2 pastillas','centro_4':'Centro de carga 4 pastillas'
 };
 
@@ -2752,17 +2753,21 @@ async function agregarBrake(){
   renderDesglose();recalcTrabajo();
 }
 async function agregarBase(){
-  const ton=await uiChoose('¿Base de qué tonelaje?',[
-    {label:'1 ton — $700',value:'1'},{label:'2 ton — $800',value:'2'}
+  const sub=await uiChoose('¿Qué tipo de base?',[
+    {label:'1 ton — $700',value:'1'},
+    {label:'2 ton — $800',value:'2'},
+    {label:'Techo goma — $600',value:'goma'},
+    {label:'Techo metal — $800',value:'metal'}
   ]);
-  if(!ton)return;
-  const cant=await pedirNum('¿Cuántas bases?','$'+PRECIOS_MATERIAL['base_'+ton]+' c/u');
+  if(!sub)return;
+  const cant=await pedirNum('¿Cuántas bases?','$'+PRECIOS_MATERIAL['base_'+sub]+' c/u');
   if(cant===null||cant<=0)return;
-  const precio=PRECIOS_MATERIAL['base_'+ton];
-  desgloseItems.push({tipo:'base',subtipo:ton,cantidad:cant,monto:cant*precio,
-    nombreVisible:'Base '+ton+' ton x'+cant,
+  const precio=PRECIOS_MATERIAL['base_'+sub];
+  const nombreBase={'1':'Base 1 ton','2':'Base 2 ton','goma':'Base techo goma','metal':'Base techo metal'}[sub];
+  desgloseItems.push({tipo:'base',subtipo:sub,cantidad:cant,monto:cant*precio,
+    nombreVisible:nombreBase+' x'+cant,
     pagaConcepto:'Instalación de base',pagaCant:cant,
-    descuentaSaldo:MAP_MATERIAL_SALDO['base_'+ton],descuentaCant:cant});
+    descuentaSaldo:MAP_MATERIAL_SALDO['base_'+sub],descuentaCant:cant});
   renderDesglose();recalcTrabajo();
 }
 async function agregarCentro(){
@@ -3068,6 +3073,8 @@ async function renderMaterialUsado(list){
     {key:'brake_patas',label:'Brake patas'},
     {key:'base_1',label:'Base 1 ton'},
     {key:'base_2',label:'Base 2 ton'},
+    {key:'base_goma',label:'Base techo goma'},
+    {key:'base_metal',label:'Base techo metal'},
     {key:'centro_2',label:'Centro 2 past.'},
     {key:'centro_4',label:'Centro 4 past.'},
     {key:'cable',label:'Cable (metros)'}
@@ -3083,8 +3090,15 @@ async function renderMaterialUsado(list){
         const st=d.subtipo||parseSubFromName(d.nombre,'brake');
         key='brake_'+(st||'ranura'); cant=d.cantidad||parseCantFromName(d.nombre);
       }else if(d.tipo==='base'){
-        const st=d.subtipo||parseSubFromName(d.nombre,'base');
-        key='base_'+(st||'1'); cant=d.cantidad||parseCantFromName(d.nombre);
+        let st=d.subtipo;
+        if(!st){
+          const nl=(d.nombre||'').toLowerCase();
+          if(nl.includes('goma'))st='goma';
+          else if(nl.includes('metal'))st='metal';
+          else if(nl.includes('2'))st='2';
+          else st='1';
+        }
+        key='base_'+st; cant=d.cantidad||parseCantFromName(d.nombre);
       }else if(d.tipo==='centro'){
         const st=d.subtipo||parseSubFromName(d.nombre,'centro');
         key='centro_'+(st||'2'); cant=d.cantidad||parseCantFromName(d.nombre);
@@ -3933,7 +3947,7 @@ async function registrarMovLote(tipo,nombre,cantidad,destino,tecnico,motivo,sucD
 // ════════════════ REPOSICIÓN DE MATERIAL A TÉCNICO ════════════════
 const MATERIALES_REPOSICION=[
   'Breaker de ranura','Breaker de patas',
-  'Base 1 ton','Base 2 ton',
+  'Base 1 ton','Base 2 ton','Base de techo goma','Base de techo metal',
   'Centro de carga 2 pastillas','Centro de carga 4 pastillas'
 ];
 
