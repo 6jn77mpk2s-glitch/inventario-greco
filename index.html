@@ -321,6 +321,21 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   </div>
 </div>
 
+<!-- ════════ PANTALLA TÉCNICO (acceso limitado) ════════ -->
+<div id="tecnicoApp" style="display:none;min-height:100vh;background:var(--bg)">
+  <header>
+    <div class="header-top">
+      <div class="logo">Climas <span>Greco</span></div>
+      <div class="branch-pill sur" onclick="salirTecnico()" style="cursor:pointer">SALIR ↩</div>
+    </div>
+    <div id="tecBienvenida" style="padding:14px 4px 4px;font-size:18px;font-weight:700">Bienvenido</div>
+  </header>
+  <div style="padding:12px">
+    <div id="tecFechaLbl" style="text-align:center;font-size:12px;color:var(--muted);margin-bottom:12px"></div>
+    <div id="tecTrabajosList"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+</div>
+
 <!-- APP -->
 <div id="app" style="display:none">
   <header>
@@ -888,6 +903,8 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 const URL_SB='https://mvenmzrfkmyfftwswxtq.supabase.co';
 const KEY_SB='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZW5tenJma215ZmZ0d3N3eHRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTYxMTUsImV4cCI6MjA5MjUzMjExNX0.Rged1qWORiY2l7wLL9rM-aRvEnwJa58BVBdYvLI4qyw';
 const PIN='18';
+// Contraseñas de técnicos (acceso limitado solo a sus trabajos del día)
+const TECNICO_PASSWORDS={'100':'David'};
 
 let branch=null,aires=[],mats=[],movimientos=[],activeFilter='ALL',filterVisible=false,activeTab='aires';
 
@@ -999,11 +1016,80 @@ function showToast(msg,err=false){
 const PIN_TRABAJOS='5122';
 let currentModule=null; // 'inventarios' | 'trabajos'
 
+// ════════ MODO TÉCNICO (acceso limitado) ════════
+let tecnicoActual=null;
+
+function entrarComoTecnico(nombre){
+  tecnicoActual=nombre;
+  // ocultar todas las demás pantallas
+  document.getElementById('pinScreen').style.display='none';
+  document.getElementById('moduleScreen').classList.remove('show');
+  document.getElementById('tecnicoApp').style.display='block';
+  document.getElementById('tecBienvenida').textContent='👷 Bienvenido de nuevo, '+nombre;
+  loadTrabajosTecnico();
+}
+
+function salirTecnico(){
+  tecnicoActual=null;
+  document.getElementById('tecnicoApp').style.display='none';
+  document.getElementById('pinScreen').style.display='flex';
+  document.getElementById('pinInput').value='';
+}
+
+async function loadTrabajosTecnico(){
+  const cont=document.getElementById('tecTrabajosList');
+  const hoy=new Date();
+  const hoyISO=fechaLocalISO(hoy);
+  document.getElementById('tecFechaLbl').textContent='Tus trabajos de hoy — '+hoyISO;
+  cont.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    // Cargar estados de agenda (cuál cuadrilla, estado) + eventos del calendario
+    let estados={};
+    try{ const est=await api('agenda_estados?select=*'); est.forEach(e=>{estados[e.uid]={estado:e.estado,cuadrilla:e.cuadrilla,aire:e.aire||''};}); }catch(e){}
+    let eventos=[];
+    try{ const resp=await fetch('/api/agenda'); const data=await resp.json(); if(data.eventos)eventos=data.eventos; }catch(e){}
+    // Filtrar: trabajos de HOY asignados a esta cuadrilla
+    const mios=eventos.filter(ev=>{
+      if(!ev.inicio)return false;
+      if(fechaLocalISO(new Date(ev.inicio))!==hoyISO)return false;
+      const e=estados[ev.uid];
+      return e&&e.cuadrilla===tecnicoActual;
+    }).sort((a,b)=>new Date(a.inicio)-new Date(b.inicio));
+
+    if(!mios.length){
+      cont.innerHTML='<div class="empty" style="text-align:center;padding:40px 20px;color:var(--muted)">No tienes trabajos asignados hoy 👍</div>';
+      return;
+    }
+    cont.innerHTML='';
+    mios.forEach(ev=>{
+      const e=estados[ev.uid]||{};
+      const ci=(typeof AGENDA_COLORES!=='undefined'&&AGENDA_COLORES[e.estado])?AGENDA_COLORES[e.estado]:{label:'⚪ Pendiente',color:'#9aa5b1'};
+      const card=document.createElement('div');
+      card.className='item';
+      card.style.cssText='padding:14px;margin-bottom:10px;border-left:4px solid '+ci.color+';background:var(--card);border-radius:10px';
+      let horario='';
+      if(ev.inicio){const d=new Date(ev.inicio);let h=d.getHours(),m=d.getMinutes();const ap=h>=12?'pm':'am';h=h%12;if(h===0)h=12;horario=h+(m?(':'+String(m).padStart(2,'0')):'')+ap;}
+      card.innerHTML='<div style="font-size:15px;font-weight:700">'+esc(ev.titulo||'(sin título)')+'</div>'+
+        (ev.lugar?'<div style="font-size:12px;color:var(--muted);margin-top:4px">📍 '+esc(ev.lugar)+'</div>':'')+
+        (horario?'<div style="font-size:12px;color:var(--accent2);margin-top:4px">🕐 '+horario+'</div>':'')+
+        (ev.descripcion?'<div style="font-size:12px;color:var(--text);margin-top:8px;padding:10px;background:var(--bg);border-radius:8px;white-space:pre-wrap">'+esc(ev.descripcion)+'</div>':'')+
+        '<div style="font-size:12px;font-weight:700;color:'+ci.color+';margin-top:8px">'+ci.label+'</div>';
+      cont.appendChild(card);
+    });
+  }catch(e){
+    cont.innerHTML='<div class="empty" style="color:var(--red);text-align:center;padding:20px">Error al cargar. Intenta de nuevo.</div>';
+  }
+}
+
 function checkPin(){
   const v=document.getElementById('pinInput').value;
   if(v===PIN){
     document.getElementById('pinScreen').style.display='none';
     document.getElementById('moduleScreen').classList.add('show');
+  }else if(TECNICO_PASSWORDS[v]){
+    // Acceso de técnico: va directo a su pantalla limitada
+    document.getElementById('pinInput').value='';
+    entrarComoTecnico(TECNICO_PASSWORDS[v]);
   }else{
     const i=document.getElementById('pinInput');i.classList.add('error');
     document.getElementById('pinErr').textContent='Código incorrecto';
