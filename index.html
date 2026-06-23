@@ -452,6 +452,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
         <div class="branch-pill sur" onclick="exitTrabajos()" style="cursor:pointer">SALIR ↩</div>
       </div>
     </div>
+    <div id="viendoComoBanner" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(192,132,252,.15);border:1px solid #c084fc;border-radius:8px;display:none;align-items:center;justify-content:space-between;gap:8px">
+      <span style="font-size:12px;color:#c084fc;font-weight:600">👁 Viendo a: <span id="viendoComoNombre"></span></span>
+      <button class="btn btn-ghost" onclick="salirVerComo()" style="font-size:11px;padding:4px 10px;border-color:#c084fc;color:#c084fc">← Volver a mi cuenta</button>
+    </div>
     <!-- Week navigator -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:8px">
       <button class="btn btn-ghost" onclick="cambiarSemana(-1)">←</button>
@@ -2732,6 +2736,7 @@ function renderSemana(){
   });
 }
 
+function fmtFechaCorta(iso){try{const d=new Date(iso);return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');}catch(e){return '';}}
 function buildTrabajoCard(t){
   const card=document.createElement('div');card.className='item';
   const desg=Array.isArray(t.desglose)?t.desglose:(JSON.parse(t.desglose||'[]'));
@@ -2754,6 +2759,7 @@ function buildTrabajoCard(t){
     '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+esc(desgSummary)+'</div>'+
     '<div class="item-meta"><span class="tag">'+fp+'</span>'+facturaTag+'<span class="tag" style="color:var(--green)">Total $'+total.toLocaleString()+'</span></div>'+
     (t.nota?'<div style="font-size:10px;color:var(--muted);margin-top:3px;font-style:italic">'+esc(t.nota)+'</div>':'')+
+    (t.editado_por?'<div style="font-size:9px;color:#c084fc;margin-top:3px">✏️ Editado por '+esc(t.editado_por)+(t.editado_fecha?' · '+fmtFechaCorta(t.editado_fecha):'')+'</div>':'')+
     '</div>'+
     '<div style="text-align:right"><div style="font-size:10px;color:var(--orange)">Téc $'+(parseFloat(t.pago_tecnico)||0)+'</div><div style="font-size:10px;color:var(--orange)">Ayu $'+(parseFloat(t.pago_ayudante)||0)+'</div></div>';
   main.addEventListener('click',()=>toggleTrabajoActions(t.id));
@@ -3231,8 +3237,14 @@ async function guardarTrabajo(){
   };
   try{
     if(editandoTrabajoId){
-      // EDITAR: actualizar sin tocar descuentos de material (opción A)
-      await api('trabajos?id=eq.'+editandoTrabajoId,{method:'PATCH',body:JSON.stringify(payload)});
+      // EDITAR: no cambiar el dueño; marcar quién editó y cuándo (transparencia)
+      const quienEdita=adminUser?adminUser:(viendoComo||currentUser||'');
+      const editPayload=Object.assign({},payload);
+      delete editPayload.usuario; // conservar el dueño original
+      delete editPayload.agenda_uid;
+      editPayload.editado_por=quienEdita;
+      editPayload.editado_fecha=new Date().toISOString();
+      await api('trabajos?id=eq.'+editandoTrabajoId,{method:'PATCH',body:JSON.stringify(editPayload)});
       if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
       closeTrabModal();
       showToast('Trabajo actualizado ✓');
@@ -3554,7 +3566,8 @@ function renderPagos(){
 }
 
 // ══════════ CAJA (control de dinero) ══════════
-const BANCO_SALDO_INICIAL=43536.09; // saldo del banco al arrancar el sistema
+const BANCO_SALDO_INICIAL_MAP={'Eduardo':43536.09}; // saldo inicial del banco por usuario
+function bancoSaldoInicial(){ return BANCO_SALDO_INICIAL_MAP[currentUser]||0; }
 const BANCO_FECHA_CORTE='2026-06-14'; // solo cuenta movimientos de esta fecha en adelante
 
 let cajaSalidas=[];   // salidas de la semana actual (efectivo) + todas las del banco
@@ -3562,7 +3575,69 @@ let cajaPendPagados=[]; // pendientes (DEBEN) ya cobrados
 let cortesEntregados=[]; // cortes de efectivo ya entregados
 
 // ════════ CUADRILLAS (vista admin) ════════
-async function loadCuadrillas(){
+// Técnicos que el admin puede "ver como" (tú me vas diciendo cuáles habilitar)
+const CUADRILLAS_VERCOMO=['David'];
+let adminUser=null;   // guarda tu usuario real mientras ves como otro
+let viendoComo=null;  // a quién estás viendo
+
+function loadCuadrillas(){
+  // Si ya estás viendo como alguien, no mostramos el selector (estás dentro de su cuenta)
+  const list=document.getElementById('listCuadrillas');
+  list.innerHTML='';
+  const intro=document.createElement('div');
+  intro.style.cssText='font-size:12px;color:var(--muted);text-align:center;margin-bottom:12px';
+  intro.textContent='Elige una cuadrilla para ver y administrar toda su información';
+  list.appendChild(intro);
+  CUADRILLAS_VERCOMO.forEach(nombre=>{
+    const card=document.createElement('div');
+    card.className='item';
+    card.style.cssText='padding:18px;margin-bottom:10px;background:var(--card);border-radius:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center';
+    card.innerHTML='<span style="font-size:16px;font-weight:700">👷 '+esc(nombre)+'</span><span style="color:#c084fc;font-size:13px">Ver todo ›</span>';
+    card.onclick=()=>entrarVerComo(nombre);
+    list.appendChild(card);
+  });
+  // Resumen rápido de autorizaciones pendientes (para que no tengas que entrar a cada una)
+  cargarAvisoAutorizaciones(list);
+}
+
+async function cargarAvisoAutorizaciones(list){
+  try{
+    const estados=await api('agenda_estados?select=*');
+    const pend=estados.filter(e=>e.auth_estado);
+    if(pend.length){
+      const aviso=document.createElement('div');
+      aviso.style.cssText='margin-top:14px;padding:12px;background:rgba(245,158,11,.12);border:1px solid var(--orange);border-radius:10px;text-align:center;font-size:12px;color:var(--orange)';
+      aviso.textContent='⏳ Hay '+pend.length+' solicitud(es) de autorización pendientes. Entra a la cuadrilla para resolverlas.';
+      list.appendChild(aviso);
+    }
+  }catch(e){}
+}
+
+// Entrar a "ver como" un técnico: cambia currentUser y recarga todo con sus datos
+function entrarVerComo(nombre){
+  if(!adminUser)adminUser=currentUser; // recordar tu cuenta real
+  viendoComo=nombre;
+  currentUser=nombre;
+  document.getElementById('viendoComoNombre').textContent=nombre;
+  document.getElementById('viendoComoBanner').style.display='flex';
+  document.getElementById('trabUserPill').textContent='👤 '+nombre;
+  // recargar la pestaña actual con los datos del técnico; mandar a SEMANA
+  switchTrabTab('semana');
+  loadTrabajos();
+  showToast('Viendo como '+nombre);
+}
+
+function salirVerComo(){
+  if(adminUser){currentUser=adminUser;adminUser=null;}
+  viendoComo=null;
+  document.getElementById('viendoComoBanner').style.display='none';
+  document.getElementById('trabUserPill').textContent='👤 '+(currentUser||'—');
+  switchTrabTab('cuadrillas');
+  loadTrabajos();
+  showToast('De vuelta en tu cuenta');
+}
+
+async function loadCuadrillasOLD(){
   const list=document.getElementById('listCuadrillas');
   list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
@@ -3808,7 +3883,7 @@ function renderCaja(){
   calcBancoAcumulado().then(saldo=>{
     cardB.innerHTML='';
     cardB.appendChild(hB);
-    cardB.appendChild(lineaCaja('Saldo inicial',BANCO_SALDO_INICIAL,'var(--muted)'));
+    cardB.appendChild(lineaCaja('Saldo inicial',bancoSaldoInicial(),'var(--muted)'));
     cardB.appendChild(lineaCaja('Transferencias recibidas',saldo.transferencias,'var(--green)'));
     cardB.appendChild(lineaCaja('Salidas del banco',-saldo.salidas,'var(--orange)'));
     const r=document.createElement('div');r.className='item';r.style.cssText='padding:12px 14px;border-top:2px solid var(--border)';
@@ -3877,7 +3952,7 @@ async function calcBancoAcumulado(){
   // Salidas del banco (excluye entradas), SOLO de la fecha de corte en adelante
   let salidas=0;
   cajaSalidas.forEach(s=>{if(s.bolsa==='banco'&&s.tipo!=='entrada'&&s.fecha>=BANCO_FECHA_CORTE)salidas+=(parseFloat(s.monto)||0);});
-  const total=BANCO_SALDO_INICIAL+transferencias-salidas;
+  const total=bancoSaldoInicial()+transferencias-salidas;
   return {transferencias,salidas,total};
 }
 
