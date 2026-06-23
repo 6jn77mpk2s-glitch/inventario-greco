@@ -3673,12 +3673,38 @@ async function cargarAvisoAutorizaciones(list){
   try{
     const estados=await api('agenda_estados?select=*');
     const pend=estados.filter(e=>e.auth_estado);
-    if(pend.length){
-      const aviso=document.createElement('div');
-      aviso.style.cssText='margin-top:14px;padding:12px;background:rgba(245,158,11,.12);border:1px solid var(--orange);border-radius:10px;text-align:center;font-size:12px;color:var(--orange)';
-      aviso.textContent='⏳ Hay '+pend.length+' solicitud(es) de autorización pendientes. Entra a la cuadrilla para resolverlas.';
-      list.appendChild(aviso);
-    }
+    if(!pend.length)return;
+    // Traer títulos de los eventos para mostrar de qué trabajo se trata
+    let eventos=[];
+    try{ const resp=await fetch('/api/agenda'); const data=await resp.json(); if(data.eventos)eventos=data.eventos; }catch(e){}
+    const grp=document.createElement('div');grp.className='marca-group';grp.style.marginTop='16px';
+    const h=document.createElement('div');h.className='marca-header';h.style.color='var(--orange)';h.textContent='⏳ AUTORIZACIONES PENDIENTES ('+pend.length+')';
+    grp.appendChild(h);
+    pend.forEach(e=>{
+      const ev=eventos.find(x=>x.uid===e.uid);
+      const titulo=ev?ev.titulo:'(trabajo)';
+      const esCorr=e.auth_estado==='correccion';
+      const pide=e.auth_estado==='cancelado'?'🔴 Cancelar':(e.auth_estado==='reagendado'?'🟡 Reagendar':'✏️ Corregir trabajo');
+      const card=document.createElement('div');card.className='item';card.style.cssText='padding:12px 14px;border-left:3px solid var(--orange)';
+      card.innerHTML='<div style="font-size:13px;font-weight:600">👷 '+esc(e.cuadrilla||'?')+' pide: '+pide+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px">'+esc(titulo)+'</div>';
+      const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;margin-top:8px';
+      if(esCorr){
+        const bAbrir=document.createElement('button');bAbrir.className='btn btn-success';bAbrir.textContent='✓ Abrir para corregir';bAbrir.style.cssText='flex:1;font-size:12px;padding:7px';
+        bAbrir.onclick=()=>autorizarCorreccion(e,true);
+        const bNo=document.createElement('button');bNo.className='btn btn-cancel';bNo.textContent='✗ Rechazar';bNo.style.cssText='flex:1;font-size:12px;padding:7px';
+        bNo.onclick=()=>autorizarCorreccion(e,false);
+        acts.appendChild(bAbrir);acts.appendChild(bNo);
+      }else{
+        const bOk=document.createElement('button');bOk.className='btn btn-success';bOk.textContent='✓ Autorizar';bOk.style.cssText='flex:1;font-size:12px;padding:7px';
+        bOk.onclick=()=>autorizarCambio(e,true);
+        const bNo=document.createElement('button');bNo.className='btn btn-cancel';bNo.textContent='✗ Rechazar';bNo.style.cssText='flex:1;font-size:12px;padding:7px';
+        bNo.onclick=()=>autorizarCambio(e,false);
+        acts.appendChild(bOk);acts.appendChild(bNo);
+      }
+      card.appendChild(acts);
+      grp.appendChild(card);
+    });
+    list.appendChild(grp);
   }catch(e){}
 }
 
