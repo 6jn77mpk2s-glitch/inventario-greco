@@ -1964,6 +1964,9 @@ async function loadTecnicos(){
   list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
     const movs=await api('movimientos?select=*');
+    // Saldos permanentes de material y cable (no se reinician por día)
+    try{ matTecData=await api('material_tecnicos?select=*'); }catch(e){ matTecData=[]; }
+    try{ cableData=await api('cable_tecnicos?select=*'); }catch(e){ cableData=[]; }
     // Cargar agenda (eventos + estados) para mostrar trabajos asignados
     try{
       const est=await api('agenda_estados?select=*');
@@ -2010,10 +2013,8 @@ function renderTecnicos(movs){
       if(esInstalado){
         data[m.tecnico].instaladosDet[key]=(data[m.tecnico].instaladosDet[key]||0)+Math.abs(m.cantidad);
       }
-    }else{
-      const key=m.nombre;
-      data[m.tecnico].matDet[key]=(data[m.tecnico].matDet[key]||0)+cant;
     }
+    // NOTA: los materiales ya NO se cuentan por día; ahora son saldo permanente (material_tecnicos)
   });
 
   list.innerHTML='';
@@ -2029,13 +2030,12 @@ function renderTecnicos(movs){
     const card=document.createElement('div');card.className='tec-card';
     card.innerHTML='<div class="tec-head"><div class="tec-name">👷 '+t+'</div><div class="tec-count'+(d.aires>0?' has':'')+'">'+d.aires+'</div></div>';
 
-    // Aires detalle
+    // Aires detalle (por día)
     const airesKeys=Object.keys(d.airesDet).filter(k=>d.airesDet[k]!==0);
-    const matKeys=Object.keys(d.matDet).filter(k=>d.matDet[k]!==0);
 
     if(airesKeys.length){
       const det=document.createElement('div');det.className='tec-detail';
-      const sub=document.createElement('div');sub.style.cssText='font-size:9px;color:var(--accent2);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px';sub.textContent='Aires';
+      const sub=document.createElement('div');sub.style.cssText='font-size:9px;color:var(--accent2);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px';sub.textContent='Aires (hoy)';
       det.appendChild(sub);
       airesKeys.forEach(n=>{
         const line=document.createElement('div');line.className='tec-line';
@@ -2044,15 +2044,26 @@ function renderTecnicos(movs){
       });
       card.appendChild(det);
     }
-    if(matKeys.length){
+    // Material en poder (SALDO PERMANENTE, no se reinicia) — material_tecnicos + cable
+    const matSaldo=matTecData.filter(r=>r.tecnico===t && (parseFloat(r.cantidad)||0)!==0);
+    const cabRow=cableData.find(r=>r.tecnico===t);
+    const cabM=parseFloat(cabRow?cabRow.metros:0)||0;
+    const matKeys=matSaldo.map(r=>r.material); // para el chequeo de "nada asignado"
+    if(matSaldo.length||cabM>0){
       const det=document.createElement('div');det.className='tec-detail';
-      const sub=document.createElement('div');sub.style.cssText='font-size:9px;color:var(--orange);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px';sub.textContent='Materiales';
+      const sub=document.createElement('div');sub.style.cssText='font-size:9px;color:var(--orange);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px';sub.textContent='Material en poder';
       det.appendChild(sub);
-      matKeys.forEach(n=>{
+      matSaldo.forEach(r=>{
+        const cantidad=parseFloat(r.cantidad)||0;
         const line=document.createElement('div');line.className='tec-line';
-        line.innerHTML='<span>'+esc(n)+'</span><span class="tec-line-qty" style="color:var(--orange)">'+d.matDet[n]+'</span>';
+        const bajo=cantidad<=2;
+        line.innerHTML='<span>'+esc(r.material)+'</span><span class="tec-line-qty" style="color:'+(bajo?'var(--red)':'var(--orange)')+'">'+cantidad+'</span>';
         det.appendChild(line);
       });
+      // cable
+      const lineC=document.createElement('div');lineC.className='tec-line';
+      lineC.innerHTML='<span>🧵 Cable cal. 12</span><span class="tec-line-qty" style="color:'+(cabM<=20?'var(--red)':'var(--accent2)')+'">'+cabM+' m</span>';
+      det.appendChild(lineC);
       card.appendChild(det);
     }
     // Ya instalados hoy (aires que se instalaron)
