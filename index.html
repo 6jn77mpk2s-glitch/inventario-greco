@@ -1015,6 +1015,32 @@ function uiPickerCancel(){closeUiPicker();if(_uiPickerResolve)_uiPickerResolve(n
 function uiPickerBg(e){if(e.target===document.getElementById('uiPicker'))uiPickerCancel();}
 function closeUiPicker(){document.getElementById('uiPicker').classList.remove('open');}
 
+// Confirmación bonita (reemplaza al confirm() feo). Devuelve true/false.
+function uiConfirm(titulo, opts){
+  opts=opts||{};
+  return new Promise(resolve=>{
+    uiChoose(titulo,[
+      {label:opts.ok||'✓ Sí',value:'__si__',color:'#22c55e'},
+      {label:opts.cancel||'Cancelar',value:'__no__'}
+    ],opts.sub).then(r=>resolve(r==='__si__'));
+  });
+}
+
+// Limpia etiquetas HTML de las descripciones del calendario -> texto legible
+function limpiarHtml(s){
+  if(!s)return '';
+  let t=String(s);
+  // saltos de línea de <br>, </p>, </div>
+  t=t.replace(/<br\s*\/?>/gi,'\n').replace(/<\/p>/gi,'\n').replace(/<\/div>/gi,'\n');
+  // quitar el resto de etiquetas
+  t=t.replace(/<[^>]+>/g,'');
+  // entidades comunes
+  t=t.replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&quot;/gi,'"').replace(/&#39;/gi,"'");
+  // colapsar saltos de línea múltiples
+  t=t.replace(/\n\s*\n\s*\n+/g,'\n\n').replace(/[ \t]+\n/g,'\n');
+  return t.trim();
+}
+
 function showToast(msg,err=false){
   const t=document.getElementById('toast');t.textContent=msg;
   t.className='toast'+(err?' err':'');t.classList.add('show');
@@ -1088,7 +1114,7 @@ async function loadTrabajosTecnico(){
     card.innerHTML='<div style="font-size:17px;font-weight:700">'+esc(ev.titulo||'(sin título)')+'</div>'+
       (ev.lugar?'<div style="font-size:13px;color:var(--muted);margin-top:6px">📍 '+esc(ev.lugar)+'</div>':'')+
       (horario?'<div style="font-size:13px;color:var(--accent2);margin-top:4px">🕐 '+horario+'</div>':'')+
-      (ev.descripcion?'<div style="font-size:13px;color:var(--text);margin-top:10px;padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;line-height:1.5">'+esc(ev.descripcion)+'</div>':'');
+      (ev.descripcion?'<div style="font-size:13px;color:var(--text);margin-top:10px;padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;line-height:1.5">'+esc(limpiarHtml(ev.descripcion))+'</div>':'');
     cont.appendChild(card);
 
     if(esperandoAuth){
@@ -1138,7 +1164,7 @@ async function loadTrabajosTecnico(){
 
 // David pide corrección de un trabajo ya capturado
 async function tecPedirCorreccion(ev){
-  if(!confirm('¿Pedir permiso al administrador para corregir este trabajo?'))return;
+  if(!await uiConfirm('¿Pedir permiso al administrador para corregir este trabajo?'))return;
   try{
     await guardarEstadoTecnico(ev.uid,{auth_estado:'correccion'});
     showToast('Solicitud de corrección enviada ⏳');
@@ -1677,7 +1703,7 @@ function renderMats(){
 
 // ── DELETE ──
 async function delItem(type,id){
-  if(!confirm('¿Eliminar este elemento?'))return;
+  if(!await uiConfirm('¿Eliminar este elemento?',{ok:'🗑 Eliminar'}))return;
   try{
     if(type==='aire'){await api(`inventario?id=eq.${id}`,{method:'DELETE'});aires=aires.filter(r=>r.id!==id);renderAires();}
     else{await api(`materiales?id=eq.${id}`,{method:'DELETE'});mats=mats.filter(r=>r.id!==id);renderMats();}
@@ -2039,7 +2065,7 @@ function buildAgendaCard(ev){
   const card=document.createElement('div');card.className='item';
   card.style.cssText='padding:12px 14px;border-left:4px solid '+colInfo.color+';background:'+colInfo.bg;
   const horario=horaDe(ev.inicio)+(ev.fin?(' – '+horaDe(ev.fin)):'');
-  const tieneDesc=ev.descripcion&&ev.descripcion.trim().length>0;
+  const tieneDesc=ev.descripcion&&limpiarHtml(ev.descripcion).length>0;
 
   // Encabezado tocable (expande la descripción)
   const head=document.createElement('div');
@@ -2057,7 +2083,7 @@ function buildAgendaCard(ev){
   if(tieneDesc){
     const desc=document.createElement('div');
     desc.style.cssText='display:none;margin-top:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5';
-    desc.textContent=ev.descripcion;
+    desc.textContent=limpiarHtml(ev.descripcion);
     card.appendChild(desc);
     head.onclick=()=>{
       const abierto=desc.style.display!=='none';
@@ -2481,7 +2507,7 @@ async function deshacerMovimiento(id){
   const m=movimientos.find(x=>x.id===id);
   if(!m)return;
   if(m.usuario!==currentUser){alert('Solo '+(m.usuario||'quien lo creó')+' puede deshacer este movimiento');return;}
-  if(!confirm('¿Deshacer este movimiento? Se revertirá el inventario.'))return;
+  if(!await uiConfirm('¿Deshacer este movimiento?',{sub:'Se revertirá el inventario',ok:'↶ Deshacer'}))return;
 
   try{
     // Revertir el stock en la sucursal del movimiento
@@ -2763,7 +2789,7 @@ function toggleTrabajoActions(id){
 async function delTrabajo(id){
   const t=trabajos.find(x=>x.id===id);
   if(t&&t.usuario!==currentUser){alert('Solo '+(t.usuario||'quien lo creó')+' puede eliminarlo');return;}
-  if(!confirm('¿Eliminar este trabajo?'))return;
+  if(!await uiConfirm('¿Eliminar este trabajo?',{ok:'🗑 Eliminar'}))return;
   try{
     await api('trabajos?id=eq.'+id,{method:'DELETE'});
     trabajos=trabajos.filter(x=>x.id!==id);
@@ -3616,7 +3642,7 @@ async function loadCuadrillas(){
 
 async function autorizarCambio(estadoRow,aprobar){
   const accion=aprobar?'autorizar':'rechazar';
-  if(!confirm('¿'+(aprobar?'Autorizar':'Rechazar')+' que '+(estadoRow.cuadrilla||'la cuadrilla')+' marque este trabajo como '+estadoRow.auth_estado+'?'))return;
+  if(!await uiConfirm('¿'+(aprobar?'Autorizar':'Rechazar')+' marcar como '+estadoRow.auth_estado+'?',{sub:(estadoRow.cuadrilla||'la cuadrilla')}))return;
   try{
     if(aprobar){
       // aplica el estado pedido, lo completa (desbloquea el siguiente) y limpia la solicitud
@@ -3632,7 +3658,7 @@ async function autorizarCambio(estadoRow,aprobar){
 
 // Autoriza (o rechaza) la corrección de un trabajo ya capturado
 async function autorizarCorreccion(estadoRow,aprobar){
-  if(!confirm(aprobar?'¿Abrir este trabajo para que el técnico lo corrija? Volverá a aparecerle como pendiente.':'¿Rechazar la solicitud de corrección?'))return;
+  if(!await uiConfirm(aprobar?'¿Abrir para corregir?':'¿Rechazar la corrección?',{sub:aprobar?'Volverá a aparecerle como pendiente al técnico':''}))return;
   try{
     if(aprobar){
       // reabrir: quitar completado para que el técnico lo vea de nuevo, limpiar solicitud
@@ -3930,7 +3956,7 @@ async function guardarSalida(){
 }
 
 async function delSalida(id){
-  if(!confirm('¿Eliminar esta salida?'))return;
+  if(!await uiConfirm('¿Eliminar esta salida?',{ok:'🗑 Eliminar'}))return;
   try{
     await api('caja_salidas?id=eq.'+id,{method:'DELETE'});
     cajaSalidas=cajaSalidas.filter(x=>x.id!==id);
@@ -3956,7 +3982,7 @@ async function intercambioDigital(){
 }
 
 async function cubrirFaltante(monto){
-  if(!confirm('¿Cubrir el faltante de $'+monto.toLocaleString(undefined,{maximumFractionDigits:2})+' del efectivo usando el banco? Saldrá del banco y el efectivo quedará en 0.'))return;
+  if(!await uiConfirm('¿Cubrir faltante con banco?',{sub:'Sale $'+monto.toLocaleString(undefined,{maximumFractionDigits:2})+' del banco; el efectivo queda en 0'}))return;
   const sid=semanaId(semanaOffset);
   const hoy=fmtFecha(new Date());
   try{
@@ -3969,7 +3995,7 @@ async function cubrirFaltante(monto){
 }
 
 async function entregarCorte(monto){
-  if(!confirm('¿Marcar que ya entregaste $'+monto.toLocaleString(undefined,{maximumFractionDigits:2})+' en efectivo? El efectivo disponible quedará en 0.'))return;
+  if(!await uiConfirm('¿Ya entregaste el corte?',{sub:'$'+monto.toLocaleString(undefined,{maximumFractionDigits:2})+' en efectivo · quedará en 0',ok:'✓ Sí, entregué'}))return;
   const sid=semanaId(semanaOffset);
   try{
     await api('caja_cortes',{method:'POST',body:JSON.stringify({
@@ -4089,7 +4115,7 @@ async function togglePendiente(id,saldado){
   }
 }
 async function delPendiente(id){
-  if(!confirm('¿Eliminar esta cuenta?'))return;
+  if(!await uiConfirm('¿Eliminar esta cuenta?',{ok:'🗑 Eliminar'}))return;
   try{
     await api('pendientes?id=eq.'+id,{method:'DELETE'});
     pendientes=pendientes.filter(x=>x.id!==id);

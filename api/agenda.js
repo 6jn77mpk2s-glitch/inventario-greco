@@ -16,7 +16,13 @@ function decode(v) {
 // Igual que decode pero conserva los saltos de línea (para descripciones largas)
 function decodeMultiline(v) {
   if (!v) return '';
-  return v.replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\').trim();
+  let t = v.replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
+  // limpiar HTML (Google a veces manda la descripción con <p>, <br>, etc.)
+  t = t.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<\/div>/gi, '\n');
+  t = t.replace(/<[^>]+>/g, '');
+  t = t.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'");
+  t = t.replace(/\n\s*\n\s*\n+/g, '\n\n').replace(/[ \t]+\n/g, '\n');
+  return t.trim();
 }
 
 // Parsea una fecha iCal (20260620T090000 o 20260620 o con Z)
