@@ -917,7 +917,7 @@ const URL_SB='https://mvenmzrfkmyfftwswxtq.supabase.co';
 const KEY_SB='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZW5tenJma215ZmZ0d3N3eHRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTYxMTUsImV4cCI6MjA5MjUzMjExNX0.Rged1qWORiY2l7wLL9rM-aRvEnwJa58BVBdYvLI4qyw';
 const PIN='18';
 // Contraseñas de técnicos (acceso limitado solo a sus trabajos del día)
-const TECNICO_PASSWORDS={'100':'David'};
+const TECNICO_PASSWORDS={'100':'David','183':'Eduardo','191':'Alan'};
 
 let branch=null,aires=[],mats=[],movimientos=[],activeFilter='ALL',filterVisible=false,activeTab='aires';
 
@@ -3298,6 +3298,16 @@ async function guardarTrabajo(){
         if(d.descuentaSaldo&&d.descuentaCant>0){await ajustarMaterialTecnico(cuadrilla,d.descuentaSaldo,-d.descuentaCant);}
         if(d.descuentaCableMetros>0){await ajustarCableTecnico(cuadrilla,-d.descuentaCableMetros);}
       }
+      // Por cada pago por TRANSFERENCIA, crear una transferencia PENDIENTE por asignar
+      const montoTransfer=pagosLimpios.filter(p=>p.forma==='transferencia').reduce((s,p)=>s+(parseFloat(p.monto)||0),0);
+      if(montoTransfer>0){
+        try{
+          await api('transferencias',{method:'POST',body:JSON.stringify({
+            fecha, monto:montoTransfer, tecnico:cuadrilla, trabajo_id:rows[0]?rows[0].id:null,
+            concepto:(desgGuardar[0]?desgGuardar[0].nombre:'Trabajo'), estado:'pendiente', cuenta:'', usuario_registro:(modoTecnicoCaptura?tecnicoActual:(currentUser||''))
+          })});
+        }catch(e){}
+      }
       if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
       // Si es captura de técnico: marcar el trabajo de agenda como completado y bloqueado
       if(modoTecnicoCaptura&&tecCapturaUid){
@@ -3613,11 +3623,12 @@ const BANCO_FECHA_CORTE='2026-06-14'; // solo cuenta movimientos de esta fecha e
 
 let cajaSalidas=[];   // salidas de la semana actual (efectivo) + todas las del banco
 let cajaPendPagados=[]; // pendientes (DEBEN) ya cobrados
+let transfPendientes=[]; // transferencias por asignar a una cuenta
 let cortesEntregados=[]; // cortes de efectivo ya entregados
 
 // ════════ CUADRILLAS (vista admin) ════════
 // Técnicos que el admin puede "ver como" (tú me vas diciendo cuáles habilitar)
-const CUADRILLAS_VERCOMO=['David'];
+const CUADRILLAS_VERCOMO=['David','Alan','Eduardo'];
 let adminUser=null;   // guarda tu usuario real mientras ves como otro
 let viendoComo=null;  // a quién estás viendo
 
@@ -3788,6 +3799,25 @@ async function autorizarCorreccion(estadoRow,aprobar){
   }catch(e){showToast('Error',true);}
 }
 
+// Asigna una transferencia pendiente a una cuenta (la suma al banco de esa cuenta)
+async function revertirTransferencia(id){
+  if(!await uiConfirm('¿Revertir esta transferencia?',{sub:'Volverá a pendientes por asignar y bajará del banco',ok:'↶ Revertir'}))return;
+  try{
+    await api('transferencias?id=eq.'+id,{method:'PATCH',body:JSON.stringify({estado:'pendiente',cuenta:'',fecha_confirmada:null})});
+    showToast('Transferencia revertida');
+    loadCaja();
+  }catch(e){showToast('Error',true);}
+}
+
+async function asignarTransferencia(tr,cuenta){
+  if(!await uiConfirm('¿Confirmar que esta transferencia cayó en la cuenta de '+cuenta+'?',{sub:'$'+(parseFloat(tr.monto)||0).toLocaleString()+' · se sumará a su banco',ok:'✓ Confirmar'}))return;
+  try{
+    await api('transferencias?id=eq.'+tr.id,{method:'PATCH',body:JSON.stringify({estado:'confirmada',cuenta,fecha_confirmada:new Date().toISOString()})});
+    showToast('Transferencia asignada a '+cuenta+' ✓');
+    loadCaja();
+  }catch(e){showToast('Error',true);}
+}
+
 async function loadCaja(){
   const list=document.getElementById('listCaja');
   list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
@@ -3797,6 +3827,11 @@ async function loadCaja(){
     cajaSalidas=await api('caja_salidas?select=*&usuario=eq.'+encodeURIComponent(currentUser||'')+'&order=fecha.desc,id.desc');
     cortesEntregados=await api('caja_cortes?select=*&semana=eq.'+sid+'&usuario=eq.'+encodeURIComponent(currentUser||''));
     cajaPendPagados=await api('pendientes?select=*&saldado=eq.true&usuario=eq.'+encodeURIComponent(currentUser||''));
+    // Transferencias pendientes por asignar (solo las ve la cuenta admin Eduardo, no en modo ver-como)
+    transfPendientes=[];
+    if(currentUser==='Eduardo'&&!viendoComo){
+      try{ transfPendientes=await api('transferencias?select=*&estado=eq.pendiente&order=fecha.desc,id.desc'); }catch(e){}
+    }
     renderCaja();
   }catch(e){
     list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
@@ -3868,6 +3903,24 @@ function renderCaja(){
   // Para el acumulado necesitamos todas las transferencias historicas; las calculamos abajo asincrono. Aqui usamos lo que tengamos.
   list.innerHTML='';
 
+  // ── TRANSFERENCIAS POR ASIGNAR (solo admin Eduardo) ──
+  if(transfPendientes&&transfPendientes.length){
+    const grp=document.createElement('div');grp.className='marca-group';
+    const h=document.createElement('div');h.className='marca-header';h.style.color='var(--orange)';h.textContent='🏦 TRANSFERENCIAS POR ASIGNAR ('+transfPendientes.length+')';
+    grp.appendChild(h);
+    transfPendientes.forEach(tr=>{
+      const card=document.createElement('div');card.className='item';card.style.cssText='padding:11px 14px';
+      const d=new Date((tr.fecha||'')+'T12:00:00');const fch=isNaN(d)?'':(String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'));
+      card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div style="flex:1"><div style="font-size:13px;font-weight:600">👷 '+esc(tr.tecnico||'?')+' · '+esc(tr.concepto||'Trabajo')+'</div><div style="font-size:10px;color:var(--muted)">'+fch+'</div></div><div style="font-family:var(--mono);font-size:16px;color:var(--accent2)">$'+(parseFloat(tr.monto)||0).toLocaleString()+'</div></div>';
+      const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;margin-top:8px';
+      const bOk=document.createElement('button');bOk.className='btn btn-success';bOk.textContent='✓ Cayó en cuenta de Eduardo';bOk.style.cssText='flex:1;font-size:12px;padding:7px';
+      bOk.onclick=()=>asignarTransferencia(tr,'Eduardo');
+      acts.appendChild(bOk);card.appendChild(acts);
+      grp.appendChild(card);
+    });
+    list.appendChild(grp);
+  }
+
   // ── EFECTIVO ──
   const cardEf=document.createElement('div');cardEf.className='marca-group';
   const hEf=document.createElement('div');hEf.className='marca-header';hEf.style.color='var(--green)';hEf.textContent='💵 EFECTIVO (esta semana)';
@@ -3932,6 +3985,26 @@ function renderCaja(){
     cardB.appendChild(r);
   });
 
+  // ── Transferencias confirmadas de este usuario (con opción de revertir) ──
+  if(currentUser&&!viendoComo){
+    api('transferencias?select=*&cuenta=eq.'+encodeURIComponent(currentUser)+'&estado=eq.confirmada&order=fecha.desc,id.desc').then(confs=>{
+      if(!confs||!confs.length)return;
+      const grp=document.createElement('div');grp.className='marca-group';
+      const h=document.createElement('div');h.className='marca-header';h.style.color='var(--green)';h.textContent='🏦 TRANSFERENCIAS RECIBIDAS (confirmadas)';
+      grp.appendChild(h);
+      confs.forEach(tr=>{
+        const card=document.createElement('div');card.className='item';card.style.padding='10px 12px';
+        const d=new Date((tr.fecha||'')+'T12:00:00');const fch=isNaN(d)?'':(String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'));
+        card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div style="flex:1"><div style="font-size:12px;font-weight:600">👷 '+esc(tr.tecnico||'?')+' · '+esc(tr.concepto||'')+'</div><div style="font-size:10px;color:var(--muted)">'+fch+'</div></div><div style="font-family:var(--mono);font-size:15px;color:var(--green)">+$'+(parseFloat(tr.monto)||0).toLocaleString()+'</div></div>';
+        const rb=document.createElement('button');rb.className='btn btn-ghost';rb.textContent='↶ Revertir';rb.style.cssText='font-size:10px;padding:3px 8px;margin-top:6px';
+        rb.onclick=()=>revertirTransferencia(tr.id);
+        card.appendChild(rb);
+        grp.appendChild(card);
+      });
+      list.appendChild(grp);
+    }).catch(()=>{});
+  }
+
   // ── Lista de salidas de la semana (excluye movimientos internos auto y entradas) ──
   const salManual=salSemana.filter(s=>s.categoria!=='Cobertura de efectivo'&&s.categoria!=='Cambio a efectivo'&&s.tipo!=='entrada');
   const entradas2=salSemana.filter(s=>s.tipo==='entrada');
@@ -3969,18 +4042,12 @@ function lineaCaja(lbl,val,color){
 }
 
 async function calcBancoAcumulado(){
-  // Transferencias de trabajos del usuario, SOLO de la fecha de corte en adelante
+  // El banco YA NO suma transferencias de trabajos automáticamente.
+  // Ahora suma solo las transferencias CONFIRMADAS asignadas a la cuenta de este usuario.
   let transferencias=0;
   try{
-    const todos=await api('trabajos?select=pagos,forma_pago,total,cobrado,fecha&usuario=eq.'+encodeURIComponent(currentUser||'')+'&fecha=gte.'+BANCO_FECHA_CORTE);
-    todos.forEach(t=>{
-      const pagosSplit=t.pagos?(Array.isArray(t.pagos)?t.pagos:JSON.parse(t.pagos||'[]')):[];
-      if(pagosSplit.length){
-        pagosSplit.forEach(p=>{if(p.forma==='transferencia')transferencias+=(parseFloat(p.monto)||0);});
-      }else{
-        if(t.forma_pago==='transferencia')transferencias+=(parseFloat(t.total)||parseFloat(t.cobrado)||0);
-      }
-    });
+    const conf=await api('transferencias?select=monto,fecha&cuenta=eq.'+encodeURIComponent(currentUser||'')+'&estado=eq.confirmada&fecha=gte.'+BANCO_FECHA_CORTE);
+    conf.forEach(t=>{transferencias+=(parseFloat(t.monto)||0);});
   }catch(e){}
   // Cuentas de DEBEN cobradas por transferencia (de la fecha de corte en adelante)
   cajaPendPagados.forEach(p=>{
