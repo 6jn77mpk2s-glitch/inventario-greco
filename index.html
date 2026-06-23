@@ -483,8 +483,12 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="tab" id="tabPagos" onclick="switchTrabTab('pagos')">💵 PAGOS</div>
     <div class="tab" id="tabCaja" onclick="switchTrabTab('caja')">🏦 CAJA</div>
     <div class="tab" id="tabCuadrillas" onclick="switchTrabTab('cuadrillas')">👷 CUADRILLAS</div>
-    <div class="tab" id="tabPend" onclick="switchTrabTab('pendientes')">📌 DEBEN</div>
-    <div class="tab" id="tabTarifas" onclick="switchTrabTab('tarifas')">🏷️ TARIFAS</div>
+    <div class="tab" id="tabMas" onclick="toggleMasMenu(event)">☰ MÁS</div>
+  </div>
+  <!-- Menú desplegable "Más" -->
+  <div id="masMenu" style="display:none;position:absolute;right:12px;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.4);min-width:160px">
+    <div class="tab" id="tabPend" onclick="switchTrabTab('pendientes');closeMasMenu()" style="display:block;text-align:left;padding:10px 14px;border-radius:7px">📌 DEBEN</div>
+    <div class="tab" id="tabTarifas" onclick="switchTrabTab('tarifas');closeMasMenu()" style="display:block;text-align:left;padding:10px 14px;border-radius:7px">🏷️ TARIFAS</div>
   </div>
 
   <!-- SEMANA: trabajos por día -->
@@ -3341,6 +3345,18 @@ async function ajustarCableTecnico(tecnico,delta){
 }
 
 // ── TABS TRABAJOS ──
+function toggleMasMenu(e){
+  if(e)e.stopPropagation();
+  const m=document.getElementById('masMenu');
+  m.style.display=(m.style.display==='none'||!m.style.display)?'block':'none';
+}
+function closeMasMenu(){const m=document.getElementById('masMenu');if(m)m.style.display='none';}
+// cerrar el menú al tocar fuera
+document.addEventListener('click',function(ev){
+  const m=document.getElementById('masMenu');const b=document.getElementById('tabMas');
+  if(m&&m.style.display==='block'&&!m.contains(ev.target)&&ev.target!==b&&!b.contains(ev.target))m.style.display='none';
+});
+
 function switchTrabTab(t){
   trabTab=t;
   document.getElementById('secSemana').style.display=t==='semana'?'block':'none';
@@ -3355,6 +3371,7 @@ function switchTrabTab(t){
   document.getElementById('tabPagos').className='tab'+(t==='pagos'?' active':'');
   document.getElementById('tabCaja').className='tab'+(t==='caja'?' active':'');
   document.getElementById('tabCuadrillas').className='tab'+(t==='cuadrillas'?' active':'');
+  document.getElementById('tabMas').className='tab'+((t==='pendientes'||t==='tarifas')?' active':'');
   document.getElementById('tabPend').className='tab'+(t==='pendientes'?' active':'');
   document.getElementById('tabTarifas').className='tab'+(t==='tarifas'?' active':'');
   if(t==='corte')renderCorte();
