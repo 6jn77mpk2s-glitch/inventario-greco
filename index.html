@@ -1058,13 +1058,15 @@ let currentModule=null; // 'inventarios' | 'trabajos'
 // ════════ MODO TÉCNICO (acceso limitado) ════════
 let tecnicoActual=null;
 
-function entrarComoTecnico(nombre){
+async function entrarComoTecnico(nombre){
   tecnicoActual=nombre;
   // ocultar todas las demás pantallas
   document.getElementById('pinScreen').style.display='none';
   document.getElementById('moduleScreen').classList.remove('show');
   document.getElementById('tecnicoApp').style.display='block';
   document.getElementById('tecBienvenida').textContent='👷 Bienvenido de nuevo, '+nombre;
+  // cargar tarifas para que el pago se calcule al capturar (aunque el técnico no lo vea)
+  try{ await loadTarifas(true); }catch(e){}
   loadTrabajosTecnico();
 }
 
@@ -2768,6 +2770,31 @@ function buildTrabajoCard(t){
   const act=document.createElement('div');act.className='editor';act.id='trab-act-'+t.id;
   const mio=(t.usuario===currentUser);
   act.innerHTML='';
+  // Desglose detallado (renglón por renglón) al expandir
+  const det=document.createElement('div');
+  det.style.cssText='background:var(--bg);border-radius:10px;padding:12px;margin-bottom:10px';
+  let detHtml='<div style="font-size:10px;color:var(--accent2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Desglose del trabajo</div>';
+  desg.forEach(x=>{
+    detHtml+='<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px"><span>'+esc(x.nombre)+'</span><span style="font-family:var(--mono);color:var(--green)">$'+(parseFloat(x.monto)||0).toLocaleString()+'</span></div>';
+  });
+  detHtml+='<div style="display:flex;justify-content:space-between;padding:8px 0 2px;font-size:14px;font-weight:700"><span>TOTAL</span><span style="font-family:var(--mono);color:var(--green)">$'+total.toLocaleString()+'</span></div>';
+  // Pagos divididos
+  if(pagosSplit.length){
+    detHtml+='<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px">Cómo se cobró</div>';
+    pagosSplit.forEach(p=>{
+      const lbl=({efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',tarjeta:'💳 Tarjeta oficina',cobra_otro:'👤 Cobra '+(p.quien||''),local:'🏪 Local'})[p.forma]||p.forma;
+      detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>'+esc(lbl)+'</span><span style="font-family:var(--mono)">$'+(parseFloat(p.monto)||0).toLocaleString()+'</span></div>';
+    });
+  }
+  // Pagos a técnico/ayudante (solo visible para admin, no en modo técnico)
+  if(!modoTecnicoCaptura){
+    detHtml+='<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px">Pagos</div>';
+    detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>👷 Técnico</span><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(t.pago_tecnico)||0).toLocaleString()+'</span></div>';
+    if(ayuNom)detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>🤝 Ayudante ('+esc(ayuNom)+')</span><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(t.pago_ayudante)||0).toLocaleString()+'</span></div>';
+    if(parseFloat(t.pago_atrasado)>0)detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>Atrasado'+(t.pago_atrasado_nota?' ('+esc(t.pago_atrasado_nota)+')':'')+'</span><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(t.pago_atrasado)||0).toLocaleString()+'</span></div>';
+  }
+  det.innerHTML=detHtml;
+  act.appendChild(det);
   const acts=document.createElement('div');acts.className='editor-actions';
   if(mio){
     const bEdit=document.createElement('button');bEdit.className='btn btn-primary';bEdit.style.flex='1';bEdit.textContent='✏️ Editar';
@@ -3214,8 +3241,22 @@ async function guardarTrabajo(){
   const principal=pagosLimpios.slice().sort((a,b)=>b.monto-a.monto)[0];
   const forma=principal.forma;
   const quienCobra=principal.forma==='cobra_otro'?principal.quien:'';
-  const pagoTec=parseFloat(document.getElementById('trabPagoTec').value)||0;
-  const pagoAyu=parseFloat(document.getElementById('trabPagoAyu').value)||0;
+  let pagoTec=parseFloat(document.getElementById('trabPagoTec').value)||0;
+  let pagoAyu=parseFloat(document.getElementById('trabPagoAyu').value)||0;
+  // En modo técnico los campos están ocultos: calcular el pago siempre con las tarifas
+  if(modoTecnicoCaptura){
+    const grupo=grupoDe(cuadrilla);
+    let st=0,sa=0;
+    desgloseItems.forEach(d=>{
+      if(d.pagaConcepto&&tarifas[d.pagaConcepto]){
+        const tt=tarifas[d.pagaConcepto];const veces=d.pagaCant||1;
+        st+=(tt[grupo]?tt[grupo].monto:0)*veces;
+        sa+=(tt.ayudante?tt.ayudante.monto:0)*veces;
+      }
+    });
+    pagoTec=st;
+    pagoAyu=(ayudante&&ayudante!=='')?sa:0; // solo paga ayudante si eligió uno
+  }
   const pagoAtras=parseFloat(document.getElementById('trabPagoAtras').value)||0;
   const pagoAtrasNota=document.getElementById('trabPagoAtrasNota').value.trim();
   const nota=document.getElementById('trabNota').value.trim();
