@@ -478,6 +478,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="tab" id="tabCorte" onclick="switchTrabTab('corte')">💰 CORTE</div>
     <div class="tab" id="tabPagos" onclick="switchTrabTab('pagos')">💵 PAGOS</div>
     <div class="tab" id="tabCaja" onclick="switchTrabTab('caja')">🏦 CAJA</div>
+    <div class="tab" id="tabCuadrillas" onclick="switchTrabTab('cuadrillas')">👷 CUADRILLAS</div>
     <div class="tab" id="tabPend" onclick="switchTrabTab('pendientes')">📌 DEBEN</div>
     <div class="tab" id="tabTarifas" onclick="switchTrabTab('tarifas')">🏷️ TARIFAS</div>
   </div>
@@ -524,6 +525,14 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="loadCaja()" style="margin-left:auto">↻</button>
     </div>
     <div class="list" id="listCaja"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+
+  <!-- CUADRILLAS (vista admin de lo que hace cada cuadrilla + autorizaciones) -->
+  <div id="secCuadrillas" style="display:none">
+    <div class="controls">
+      <button class="btn btn-ghost" onclick="loadCuadrillas()" style="margin-left:auto">↻</button>
+    </div>
+    <div class="list" id="listCuadrillas"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
   </div>
 
   <!-- PENDIENTES (cuentas por cobrar) -->
@@ -1036,6 +1045,7 @@ function salirTecnico(){
   document.getElementById('pinInput').value='';
 }
 
+let tecEstados={}; // cache de estados para el modo técnico
 async function loadTrabajosTecnico(){
   const cont=document.getElementById('tecTrabajosList');
   const hoy=new Date();
@@ -1043,12 +1053,11 @@ async function loadTrabajosTecnico(){
   document.getElementById('tecFechaLbl').textContent='Tus trabajos de hoy — '+hoyISO;
   cont.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
-    // Cargar estados de agenda (cuál cuadrilla, estado) + eventos del calendario
     let estados={};
-    try{ const est=await api('agenda_estados?select=*'); est.forEach(e=>{estados[e.uid]={estado:e.estado,cuadrilla:e.cuadrilla,aire:e.aire||''};}); }catch(e){}
+    try{ const est=await api('agenda_estados?select=*'); est.forEach(e=>{estados[e.uid]={estado:e.estado,cuadrilla:e.cuadrilla,aire:e.aire||'',completado:e.completado===true,auth_estado:e.auth_estado||''};}); }catch(e){}
+    tecEstados=estados;
     let eventos=[];
     try{ const resp=await fetch('/api/agenda'); const data=await resp.json(); if(data.eventos)eventos=data.eventos; }catch(e){}
-    // Filtrar: trabajos de HOY asignados a esta cuadrilla
     const mios=eventos.filter(ev=>{
       if(!ev.inicio)return false;
       if(fechaLocalISO(new Date(ev.inicio))!==hoyISO)return false;
@@ -1060,24 +1069,90 @@ async function loadTrabajosTecnico(){
       cont.innerHTML='<div class="empty" style="text-align:center;padding:40px 20px;color:var(--muted)">No tienes trabajos asignados hoy 👍</div>';
       return;
     }
+
+    // Desbloqueo secuencial: mostrar solo el primero NO completado
+    const pendientes=mios.filter(ev=>!(estados[ev.uid]&&estados[ev.uid].completado));
+    if(!pendientes.length){
+      cont.innerHTML='<div class="empty" style="text-align:center;padding:40px 20px"><div style="font-size:40px">🎉</div><div style="font-size:16px;font-weight:700;margin-top:10px">¡Terminaste todos tus trabajos de hoy!</div><div style="font-size:12px;color:var(--muted);margin-top:6px">Buen trabajo, '+esc(tecnicoActual)+'.</div></div>';
+      return;
+    }
+    const ev=pendientes[0];
+    const e=estados[ev.uid]||{};
     cont.innerHTML='';
-    mios.forEach(ev=>{
-      const e=estados[ev.uid]||{};
-      const ci=(typeof AGENDA_COLORES!=='undefined'&&AGENDA_COLORES[e.estado])?AGENDA_COLORES[e.estado]:{label:'⚪ Pendiente',color:'#9aa5b1'};
-      const card=document.createElement('div');
-      card.className='item';
-      card.style.cssText='padding:14px;margin-bottom:10px;border-left:4px solid '+ci.color+';background:var(--card);border-radius:10px';
-      let horario='';
-      if(ev.inicio){const d=new Date(ev.inicio);let h=d.getHours(),m=d.getMinutes();const ap=h>=12?'pm':'am';h=h%12;if(h===0)h=12;horario=h+(m?(':'+String(m).padStart(2,'0')):'')+ap;}
-      card.innerHTML='<div style="font-size:15px;font-weight:700">'+esc(ev.titulo||'(sin título)')+'</div>'+
-        (ev.lugar?'<div style="font-size:12px;color:var(--muted);margin-top:4px">📍 '+esc(ev.lugar)+'</div>':'')+
-        (horario?'<div style="font-size:12px;color:var(--accent2);margin-top:4px">🕐 '+horario+'</div>':'')+
-        (ev.descripcion?'<div style="font-size:12px;color:var(--text);margin-top:8px;padding:10px;background:var(--bg);border-radius:8px;white-space:pre-wrap">'+esc(ev.descripcion)+'</div>':'')+
-        '<div style="font-size:12px;font-weight:700;color:'+ci.color+';margin-top:8px">'+ci.label+'</div>';
-      cont.appendChild(card);
-    });
+    const card=document.createElement('div');
+    card.className='item';
+    card.style.cssText='padding:16px;border-left:4px solid var(--accent2);background:var(--card);border-radius:12px';
+    let horario='';
+    if(ev.inicio){const d=new Date(ev.inicio);let h=d.getHours(),m=d.getMinutes();const ap=h>=12?'pm':'am';h=h%12;if(h===0)h=12;horario=h+(m?(':'+String(m).padStart(2,'0')):'')+ap;}
+    const esperandoAuth=(e.auth_estado==='cancelado'||e.auth_estado==='reagendado');
+    card.innerHTML='<div style="font-size:17px;font-weight:700">'+esc(ev.titulo||'(sin título)')+'</div>'+
+      (ev.lugar?'<div style="font-size:13px;color:var(--muted);margin-top:6px">📍 '+esc(ev.lugar)+'</div>':'')+
+      (horario?'<div style="font-size:13px;color:var(--accent2);margin-top:4px">🕐 '+horario+'</div>':'')+
+      (ev.descripcion?'<div style="font-size:13px;color:var(--text);margin-top:10px;padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;line-height:1.5">'+esc(ev.descripcion)+'</div>':'');
+    cont.appendChild(card);
+
+    if(esperandoAuth){
+      const aviso=document.createElement('div');
+      aviso.style.cssText='margin-top:14px;padding:14px;background:rgba(245,158,11,.12);border:1px solid var(--orange);border-radius:10px;text-align:center';
+      aviso.innerHTML='<div style="font-size:13px;color:var(--orange);font-weight:600">⏳ Esperando autorización del administrador</div><div style="font-size:11px;color:var(--muted);margin-top:4px">Pediste marcar este trabajo como '+(e.auth_estado==='cancelado'?'cancelado':'reagendado')+'. Cuando el admin lo autorice, podrás continuar.</div>';
+      cont.appendChild(aviso);
+      const rb=document.createElement('button');rb.className='btn btn-ghost';rb.textContent='↻ Revisar si ya me autorizaron';rb.style.cssText='width:100%;margin-top:10px';
+      rb.onclick=()=>loadTrabajosTecnico();
+      cont.appendChild(rb);
+      return;
+    }
+
+    // Botones de acción
+    const acts=document.createElement('div');acts.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:14px';
+    const bInst=document.createElement('button');bInst.className='btn btn-success';bInst.textContent='✅ Marqué como terminado';bInst.style.cssText='width:100%;padding:14px;font-size:15px';
+    bInst.onclick=()=>tecTerminarTrabajo(ev);
+    acts.appendChild(bInst);
+    const bOtro=document.createElement('button');bOtro.className='btn btn-ghost';bOtro.textContent='No se pudo hacer (cancelar / reagendar)';bOtro.style.cssText='width:100%;padding:11px;font-size:13px';
+    bOtro.onclick=()=>tecPedirCambio(ev);
+    acts.appendChild(bOtro);
+    cont.appendChild(acts);
   }catch(e){
     cont.innerHTML='<div class="empty" style="color:var(--red);text-align:center;padding:20px">Error al cargar. Intenta de nuevo.</div>';
+  }
+}
+
+// David marca terminado (instalado) -> se completa y se desbloquea el siguiente
+async function tecTerminarTrabajo(ev){
+  if(!confirm('¿Marcar este trabajo como terminado? Se desbloqueará el siguiente.'))return;
+  try{
+    await guardarEstadoTecnico(ev.uid,{estado:'instalado',completado:true,auth_estado:''});
+    showToast('¡Trabajo terminado! ✓');
+    loadTrabajosTecnico();
+  }catch(e){showToast('Error',true);}
+}
+
+// David pide cancelar/reagendar -> requiere autorización del admin
+async function tecPedirCambio(ev){
+  const opt=await uiChoose('¿Qué pasó con el trabajo?',[
+    {label:'🔴 Cancelado',value:'cancelado'},
+    {label:'🟡 Reagendado',value:'reagendado'}
+  ],'Esto necesita autorización del administrador');
+  if(!opt)return;
+  try{
+    await guardarEstadoTecnico(ev.uid,{auth_estado:opt});
+    showToast('Solicitud enviada al admin ⏳');
+    loadTrabajosTecnico();
+  }catch(e){showToast('Error',true);}
+}
+
+// Guarda estado desde el modo técnico (upsert en agenda_estados)
+async function guardarEstadoTecnico(uid,cambios){
+  const actual=tecEstados[uid]||{};
+  const ex=await api('agenda_estados?select=id&uid=eq.'+encodeURIComponent(uid));
+  const payload={};
+  if(cambios.estado!==undefined)payload.estado=cambios.estado;
+  if(cambios.completado!==undefined)payload.completado=cambios.completado;
+  if(cambios.auth_estado!==undefined)payload.auth_estado=cambios.auth_estado;
+  payload.updated_at=new Date().toISOString();
+  if(ex.length){
+    await api('agenda_estados?id=eq.'+ex[0].id,{method:'PATCH',body:JSON.stringify(payload)});
+  }else{
+    await api('agenda_estados',{method:'POST',body:JSON.stringify(Object.assign({uid,cuadrilla:tecnicoActual},payload))});
   }
 }
 
@@ -3079,17 +3154,20 @@ function switchTrabTab(t){
   document.getElementById('secCorte').style.display=t==='corte'?'block':'none';
   document.getElementById('secPagos').style.display=t==='pagos'?'block':'none';
   document.getElementById('secCaja').style.display=t==='caja'?'block':'none';
+  document.getElementById('secCuadrillas').style.display=t==='cuadrillas'?'block':'none';
   document.getElementById('secPend').style.display=t==='pendientes'?'block':'none';
   document.getElementById('secTarifas').style.display=t==='tarifas'?'block':'none';
   document.getElementById('tabSemana').className='tab'+(t==='semana'?' active':'');
   document.getElementById('tabCorte').className='tab'+(t==='corte'?' active':'');
   document.getElementById('tabPagos').className='tab'+(t==='pagos'?' active':'');
   document.getElementById('tabCaja').className='tab'+(t==='caja'?' active':'');
+  document.getElementById('tabCuadrillas').className='tab'+(t==='cuadrillas'?' active':'');
   document.getElementById('tabPend').className='tab'+(t==='pendientes'?' active':'');
   document.getElementById('tabTarifas').className='tab'+(t==='tarifas'?' active':'');
   if(t==='corte')renderCorte();
   if(t==='pagos')initPagos();
   if(t==='caja')loadCaja();
+  if(t==='cuadrillas')loadCuadrillas();
   if(t==='pendientes')loadPendientes();
   if(t==='tarifas')loadTarifas();
 }
@@ -3352,6 +3430,90 @@ const BANCO_FECHA_CORTE='2026-06-14'; // solo cuenta movimientos de esta fecha e
 let cajaSalidas=[];   // salidas de la semana actual (efectivo) + todas las del banco
 let cajaPendPagados=[]; // pendientes (DEBEN) ya cobrados
 let cortesEntregados=[]; // cortes de efectivo ya entregados
+
+// ════════ CUADRILLAS (vista admin) ════════
+async function loadCuadrillas(){
+  const list=document.getElementById('listCuadrillas');
+  list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    let estados=[];
+    try{ estados=await api('agenda_estados?select=*'); }catch(e){}
+    let eventos=[];
+    try{ const resp=await fetch('/api/agenda'); const data=await resp.json(); if(data.eventos)eventos=data.eventos; }catch(e){}
+    const estByUid={}; estados.forEach(e=>{estByUid[e.uid]=e;});
+    const hoyISO=fechaLocalISO(new Date());
+    list.innerHTML='';
+
+    // 1) Autorizaciones pendientes (lo más importante arriba)
+    const pendAuth=estados.filter(e=>e.auth_estado==='cancelado'||e.auth_estado==='reagendado');
+    if(pendAuth.length){
+      const grp=document.createElement('div');grp.className='marca-group';
+      const h=document.createElement('div');h.className='marca-header';h.style.color='var(--orange)';h.textContent='⏳ AUTORIZACIONES PENDIENTES';
+      grp.appendChild(h);
+      pendAuth.forEach(e=>{
+        const ev=eventos.find(x=>x.uid===e.uid);
+        const titulo=ev?ev.titulo:'(trabajo)';
+        const card=document.createElement('div');card.className='item';card.style.cssText='padding:12px 14px;border-left:3px solid var(--orange)';
+        card.innerHTML='<div style="font-size:13px;font-weight:600">👷 '+esc(e.cuadrilla||'?')+' pide: '+(e.auth_estado==='cancelado'?'🔴 Cancelar':'🟡 Reagendar')+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px">'+esc(titulo)+'</div>';
+        const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;margin-top:8px';
+        const bOk=document.createElement('button');bOk.className='btn btn-success';bOk.textContent='✓ Autorizar';bOk.style.cssText='flex:1;font-size:12px;padding:7px';
+        bOk.onclick=()=>autorizarCambio(e,true);
+        const bNo=document.createElement('button');bNo.className='btn btn-cancel';bNo.textContent='✗ Rechazar';bNo.style.cssText='flex:1;font-size:12px;padding:7px';
+        bNo.onclick=()=>autorizarCambio(e,false);
+        acts.appendChild(bOk);acts.appendChild(bNo);card.appendChild(acts);
+        grp.appendChild(card);
+      });
+      list.appendChild(grp);
+    }
+
+    // 2) Progreso de hoy por cuadrilla
+    const techs=['Alan','Eduardo','Henry','David'];
+    techs.forEach(t=>{
+      const delDia=eventos.filter(ev=>{
+        if(!ev.inicio||fechaLocalISO(new Date(ev.inicio))!==hoyISO)return false;
+        const e=estByUid[ev.uid];
+        return e&&e.cuadrilla===t;
+      }).sort((a,b)=>new Date(a.inicio)-new Date(b.inicio));
+      if(!delDia.length)return;
+      const hechos=delDia.filter(ev=>{const e=estByUid[ev.uid];return e&&e.completado;}).length;
+      const grp=document.createElement('div');grp.className='marca-group';
+      const h=document.createElement('div');h.className='marca-header';h.style.color='var(--accent2)';h.textContent='👷 '+t+' — '+hechos+'/'+delDia.length+' hoy';
+      grp.appendChild(h);
+      delDia.forEach(ev=>{
+        const e=estByUid[ev.uid]||{};
+        const ci=(AGENDA_COLORES[e.estado]||AGENDA_COLORES.pendiente);
+        const done=e.completado;
+        const card=document.createElement('div');card.className='item';card.style.cssText='padding:10px 14px;border-left:3px solid '+(done?'var(--green)':ci.color);
+        card.innerHTML='<div style="font-size:12px;'+(done?'color:var(--muted);text-decoration:line-through':'')+'">'+esc(ev.titulo||'')+'</div>'+
+          '<div style="font-size:11px;margin-top:2px;color:'+ci.color+'">'+(done?'✅ Terminado':ci.label)+(e.aire?' · 🌬 '+esc(e.aire):'')+'</div>';
+        grp.appendChild(card);
+      });
+      list.appendChild(grp);
+    });
+
+    if(!list.children.length){
+      list.innerHTML='<div class="empty">Sin actividad de cuadrillas hoy.</div>';
+    }
+  }catch(e){
+    list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
+  }
+}
+
+async function autorizarCambio(estadoRow,aprobar){
+  const accion=aprobar?'autorizar':'rechazar';
+  if(!confirm('¿'+(aprobar?'Autorizar':'Rechazar')+' que '+(estadoRow.cuadrilla||'la cuadrilla')+' marque este trabajo como '+estadoRow.auth_estado+'?'))return;
+  try{
+    if(aprobar){
+      // aplica el estado pedido, lo completa (desbloquea el siguiente) y limpia la solicitud
+      await api('agenda_estados?id=eq.'+estadoRow.id,{method:'PATCH',body:JSON.stringify({estado:estadoRow.auth_estado,completado:true,auth_estado:'',updated_at:new Date().toISOString()})});
+    }else{
+      // rechaza: limpia la solicitud, el trabajo sigue pendiente (no se desbloquea)
+      await api('agenda_estados?id=eq.'+estadoRow.id,{method:'PATCH',body:JSON.stringify({auth_estado:'',updated_at:new Date().toISOString()})});
+    }
+    showToast(aprobar?'Autorizado ✓':'Rechazado');
+    loadCuadrillas();
+  }catch(e){showToast('Error',true);}
+}
 
 async function loadCaja(){
   const list=document.getElementById('listCaja');
