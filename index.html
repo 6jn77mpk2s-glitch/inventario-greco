@@ -3617,9 +3617,9 @@ function renderPagos(){
 }
 
 // ══════════ CAJA (control de dinero) ══════════
-const BANCO_SALDO_INICIAL_MAP={'Eduardo':43536.09}; // saldo inicial del banco por usuario
+const BANCO_SALDO_INICIAL_MAP={'Eduardo':15566.09}; // saldo inicial real del banco por usuario
 function bancoSaldoInicial(){ return BANCO_SALDO_INICIAL_MAP[currentUser]||0; }
-const BANCO_FECHA_CORTE='2026-06-14'; // solo cuenta movimientos de esta fecha en adelante
+const BANCO_FECHA_CORTE='2026-06-23'; // reinicio: solo cuenta movimientos de esta fecha en adelante
 
 let cajaSalidas=[];   // salidas de la semana actual (efectivo) + todas las del banco
 let cajaPendPagados=[]; // pendientes (DEBEN) ya cobrados
