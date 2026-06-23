@@ -601,12 +601,12 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <div class="qty-actual-row" id="pagosDifRow" style="display:none"><span class="qty-actual-lbl" style="color:var(--red)">Falta / sobra</span><span class="qty-actual-val" id="pagosDif" style="color:var(--red)">$0</span></div>
     </div>
 
-    <!-- Pago a técnico (manual con sugerencia) -->
-    <div class="field"><label>Pago al técnico <span id="sugTecnico" style="color:var(--muted);font-size:10px"></span></label>
+    <!-- Pago a técnico (manual con sugerencia) — oculto en modo técnico -->
+    <div class="field" id="fieldPagoTec"><label>Pago al técnico <span id="sugTecnico" style="color:var(--muted);font-size:10px"></span></label>
       <input type="number" id="trabPagoTec" placeholder="0" inputmode="decimal" oninput="this.dataset.touched=1">
     </div>
 
-    <!-- Ayudante -->
+    <!-- Ayudante (el select SIEMPRE visible; el pago se oculta en modo técnico) -->
     <div class="field-row">
       <div class="field"><label>Ayudante</label>
         <div style="display:flex;gap:6px">
@@ -614,13 +614,13 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
           <button class="btn btn-ghost" onclick="addAyudantePrompt()" style="white-space:nowrap">+</button>
         </div>
       </div>
-      <div class="field"><label>Pago ayudante</label>
+      <div class="field" id="fieldPagoAyu"><label>Pago ayudante</label>
         <input type="number" id="trabPagoAyu" placeholder="0" inputmode="decimal" oninput="this.dataset.touched=1">
       </div>
     </div>
 
-    <!-- Pago atrasado -->
-    <div class="field-row">
+    <!-- Pago atrasado — oculto en modo técnico -->
+    <div class="field-row" id="rowPagoAtras">
       <div class="field"><label>Pago atrasado (opcional)</label>
         <input type="number" id="trabPagoAtras" placeholder="0" inputmode="decimal">
       </div>
@@ -1111,19 +1111,94 @@ async function loadTrabajosTecnico(){
     bOtro.onclick=()=>tecPedirCambio(ev);
     acts.appendChild(bOtro);
     cont.appendChild(acts);
+
+    // Trabajos ya terminados hoy (con opción de pedir corrección)
+    const completados=mios.filter(e2=>estados[e2.uid]&&estados[e2.uid].completado);
+    if(completados.length){
+      const sec=document.createElement('div');sec.style.cssText='margin-top:24px;border-top:1px solid var(--border);padding-top:12px';
+      const t=document.createElement('div');t.style.cssText='font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px';t.textContent='Ya terminados hoy';
+      sec.appendChild(t);
+      completados.forEach(e2=>{
+        const st=estados[e2.uid]||{};
+        const row=document.createElement('div');row.style.cssText='font-size:12px;padding:8px 10px;background:var(--card);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px';
+        row.innerHTML='<span style="color:var(--muted);flex:1">'+esc(e2.titulo||'')+(st.auth_estado==='correccion'?' <span style=\'color:var(--orange)\'>⏳ corrección pedida</span>':'')+'</span>';
+        if(st.auth_estado!=='correccion'){
+          const b=document.createElement('button');b.className='btn btn-ghost';b.textContent='Corregir';b.style.cssText='font-size:11px;padding:4px 10px';
+          b.onclick=()=>tecPedirCorreccion(e2);
+          row.appendChild(b);
+        }
+        sec.appendChild(row);
+      });
+      cont.appendChild(sec);
+    }
   }catch(e){
     cont.innerHTML='<div class="empty" style="color:var(--red);text-align:center;padding:20px">Error al cargar. Intenta de nuevo.</div>';
   }
 }
 
-// David marca terminado (instalado) -> se completa y se desbloquea el siguiente
-async function tecTerminarTrabajo(ev){
-  if(!confirm('¿Marcar este trabajo como terminado? Se desbloqueará el siguiente.'))return;
+// David pide corrección de un trabajo ya capturado
+async function tecPedirCorreccion(ev){
+  if(!confirm('¿Pedir permiso al administrador para corregir este trabajo?'))return;
   try{
-    await guardarEstadoTecnico(ev.uid,{estado:'instalado',completado:true,auth_estado:''});
-    showToast('¡Trabajo terminado! ✓');
+    await guardarEstadoTecnico(ev.uid,{auth_estado:'correccion'});
+    showToast('Solicitud de corrección enviada ⏳');
     loadTrabajosTecnico();
   }catch(e){showToast('Error',true);}
+}
+
+// David termina -> primero liga el aire instalado, luego abre la captura del trabajo
+async function tecTerminarTrabajo(ev){
+  // 1) preguntar qué aire se instaló (como en agenda) y descontarlo
+  await ligarAireInstaladoTec(ev,tecnicoActual);
+  // 2) abrir el formulario de captura en modo técnico
+  abrirCapturaTecnico(ev);
+}
+
+// Igual que ligarAireInstalado pero sin cambiar estado (solo descuenta y guarda el aire)
+async function ligarAireInstaladoTec(ev,cuad){
+  const fechaTrabajo=ev.inicio?fechaLocalISO(new Date(ev.inicio)):fechaLocalISO(new Date());
+  let opciones=[{label:'🛠️ Ninguno / solo mantenimiento',value:'__ninguno__'}];
+  try{
+    const movs=await api('movimientos?select=*&tecnico=eq.'+encodeURIComponent(cuad)+'&tipo=eq.aire&destino=eq.interno');
+    const delDia=movs.filter(m=>m.fecha&&fechaLocalISO(new Date(m.fecha))===fechaTrabajo);
+    const vistos={};
+    delDia.forEach(m=>{
+      const key=m.nombre+'|'+(m.voltaje||'')+'|'+(m.ton||'');
+      if(!vistos[key]){vistos[key]=true;
+        const label=m.nombre+(m.voltaje||m.ton?' ('+(m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||'')+')':'');
+        opciones.push({label:'🌬 '+label,value:JSON.stringify({nombre:m.nombre,voltaje:m.voltaje||'',ton:m.ton||''})});}
+    });
+  }catch(e){}
+  const sel=await uiChoose('¿Qué aire instalaste?',opciones,'De los que traes hoy');
+  let aireStr='Solo mantenimiento';
+  if(sel&&sel!=='__ninguno__'){
+    const a=JSON.parse(sel);
+    aireStr=a.nombre+(a.voltaje||a.ton?' ('+(a.voltaje||'')+(a.voltaje&&a.ton?' · ':'')+(a.ton||'')+')':'');
+    try{
+      await api('movimientos',{method:'POST',body:JSON.stringify({
+        sucursal:'',tipo:'aire',nombre:a.nombre,cantidad:-1,destino:'instalado',tecnico:cuad,
+        motivo:'Instalado: '+(ev.titulo||''),sucursal_destino:'',usuario:cuad,
+        voltaje:a.voltaje||'',ton:a.ton||'',lote:'',fecha:new Date(fechaTrabajo+'T12:00:00').toISOString()
+      })});
+    }catch(e){}
+  }
+  // guardar el aire en el estado (sin completar todavía; se completa al guardar el trabajo)
+  await guardarEstadoTecnico(ev.uid,{aire:aireStr});
+}
+
+// Abre el modal de trabajo en modo técnico
+function abrirCapturaTecnico(ev){
+  openTrabajoModal();
+  modoTecnicoCaptura=true;
+  tecCapturaUid=ev.uid;
+  aplicarModoTecnicoUI(true);
+  document.getElementById('trabModalTitle').textContent='✅ Capturar: '+(ev.titulo||'trabajo');
+  // cuadrilla fija = el técnico
+  const selC=document.getElementById('trabCuadrilla');
+  if(![...selC.options].some(o=>o.value===tecnicoActual)){const o=document.createElement('option');o.value=tecnicoActual;o.textContent=tecnicoActual;selC.appendChild(o);}
+  selC.value=tecnicoActual;
+  // nota con la dirección/título para referencia
+  document.getElementById('trabNota').value=ev.lugar||'';
 }
 
 // David pide cancelar/reagendar -> requiere autorización del admin
@@ -1148,6 +1223,8 @@ async function guardarEstadoTecnico(uid,cambios){
   if(cambios.estado!==undefined)payload.estado=cambios.estado;
   if(cambios.completado!==undefined)payload.completado=cambios.completado;
   if(cambios.auth_estado!==undefined)payload.auth_estado=cambios.auth_estado;
+  if(cambios.aire!==undefined)payload.aire=cambios.aire;
+  if(cambios.capturado!==undefined)payload.capturado=cambios.capturado;
   payload.updated_at=new Date().toISOString();
   if(ex.length){
     await api('agenda_estados?id=eq.'+ex[0].id,{method:'PATCH',body:JSON.stringify(payload)});
@@ -2754,8 +2831,20 @@ const MAP_MATERIAL_SALDO={
 let desgloseItems=[]; // [{tipo, ...campos, monto, nombreVisible, pagaTecnico, descuentaMaterial}]
 
 let editandoTrabajoId=null;
+let modoTecnicoCaptura=false; // true cuando David captura su trabajo
+let tecCapturaUid=null; // uid del trabajo de agenda que se está capturando
+function aplicarModoTecnicoUI(on){
+  // oculta/muestra campos de pago según el modo
+  document.getElementById('fieldPagoTec').style.display=on?'none':'';
+  document.getElementById('fieldPagoAyu').style.display=on?'none':'';
+  document.getElementById('rowPagoAtras').style.display=on?'none':'';
+  // bloquear cambio de cuadrilla en modo técnico
+  document.getElementById('trabCuadrilla').disabled=on;
+}
 function openTrabajoModal(){
   editandoTrabajoId=null;
+  modoTecnicoCaptura=false;tecCapturaUid=null;
+  aplicarModoTecnicoUI(false);
   document.getElementById('trabModalTitle').textContent='➕ Nuevo trabajo';
   document.getElementById('trabFecha').value=fmtFecha(new Date());
   // Cuadrilla por defecto = nombre del perfil si es técnico, si no sin seleccionar
@@ -3083,6 +3172,10 @@ async function guardarTrabajo(){
   const sumaPagos=pagosLimpios.reduce((s,p)=>s+p.monto,0);
   if(pagosLimpios.length===0){alert('Indica cómo se cobró (al menos una forma de pago con monto)');return;}
   if(Math.abs(total-sumaPagos)>0.5){
+    // En modo técnico el cuadre es obligatorio; para admin permite confirmar
+    if(modoTecnicoCaptura){
+      alert('La suma de los pagos ($'+sumaPagos.toLocaleString()+') no cuadra con el total ($'+total.toLocaleString()+'). Corrige antes de guardar.');return;
+    }
     if(!confirm('La suma de los pagos ($'+sumaPagos.toLocaleString()+') no cuadra con el total ($'+total.toLocaleString()+'). ¿Guardar de todas formas?'))return;
   }
   // forma principal = la de mayor monto (para compatibilidad con vistas viejas)
@@ -3107,7 +3200,8 @@ async function guardarTrabajo(){
     forma_pago:forma,quien_cobra:quienCobra,pagos:JSON.stringify(pagosLimpios),
     pago_tecnico:pagoTec,pago_ayudante:pagoAyu,
     pago_atrasado:pagoAtras,pago_atrasado_nota:pagoAtrasNota,
-    nota,usuario:currentUser||''
+    nota,usuario:modoTecnicoCaptura?tecnicoActual:(currentUser||''),
+    agenda_uid:modoTecnicoCaptura?(tecCapturaUid||''):''
   };
   try{
     if(editandoTrabajoId){
@@ -3126,6 +3220,16 @@ async function guardarTrabajo(){
         if(d.descuentaCableMetros>0){await ajustarCableTecnico(cuadrilla,-d.descuentaCableMetros);}
       }
       if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
+      // Si es captura de técnico: marcar el trabajo de agenda como completado y bloqueado
+      if(modoTecnicoCaptura&&tecCapturaUid){
+        try{ await guardarEstadoTecnico(tecCapturaUid,{estado:'instalado',completado:true,auth_estado:'',capturado:true}); }catch(e){}
+        closeTrabModal();
+        modoTecnicoCaptura=false;tecCapturaUid=null;aplicarModoTecnicoUI(false);
+        document.getElementById('trabCuadrilla').disabled=false;
+        showToast('¡Trabajo capturado! ✓');
+        loadTrabajosTecnico(); // volver a su lista (desbloquea el siguiente)
+        return;
+      }
       closeTrabModal();
       showToast('Trabajo guardado ✓');
       if(sid===semanaId(semanaOffset)){trabajos.push(rows[0]);renderSemana();renderResumenSemana();}
@@ -3445,7 +3549,7 @@ async function loadCuadrillas(){
     list.innerHTML='';
 
     // 1) Autorizaciones pendientes (lo más importante arriba)
-    const pendAuth=estados.filter(e=>e.auth_estado==='cancelado'||e.auth_estado==='reagendado');
+    const pendAuth=estados.filter(e=>e.auth_estado==='cancelado'||e.auth_estado==='reagendado'||e.auth_estado==='correccion');
     if(pendAuth.length){
       const grp=document.createElement('div');grp.className='marca-group';
       const h=document.createElement('div');h.className='marca-header';h.style.color='var(--orange)';h.textContent='⏳ AUTORIZACIONES PENDIENTES';
@@ -3453,14 +3557,25 @@ async function loadCuadrillas(){
       pendAuth.forEach(e=>{
         const ev=eventos.find(x=>x.uid===e.uid);
         const titulo=ev?ev.titulo:'(trabajo)';
+        const esCorr=e.auth_estado==='correccion';
+        const pide=e.auth_estado==='cancelado'?'🔴 Cancelar':(e.auth_estado==='reagendado'?'🟡 Reagendar':'✏️ Corregir trabajo');
         const card=document.createElement('div');card.className='item';card.style.cssText='padding:12px 14px;border-left:3px solid var(--orange)';
-        card.innerHTML='<div style="font-size:13px;font-weight:600">👷 '+esc(e.cuadrilla||'?')+' pide: '+(e.auth_estado==='cancelado'?'🔴 Cancelar':'🟡 Reagendar')+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px">'+esc(titulo)+'</div>';
+        card.innerHTML='<div style="font-size:13px;font-weight:600">👷 '+esc(e.cuadrilla||'?')+' pide: '+pide+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px">'+esc(titulo)+'</div>';
         const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;margin-top:8px';
-        const bOk=document.createElement('button');bOk.className='btn btn-success';bOk.textContent='✓ Autorizar';bOk.style.cssText='flex:1;font-size:12px;padding:7px';
-        bOk.onclick=()=>autorizarCambio(e,true);
-        const bNo=document.createElement('button');bNo.className='btn btn-cancel';bNo.textContent='✗ Rechazar';bNo.style.cssText='flex:1;font-size:12px;padding:7px';
-        bNo.onclick=()=>autorizarCambio(e,false);
-        acts.appendChild(bOk);acts.appendChild(bNo);card.appendChild(acts);
+        if(esCorr){
+          const bAbrir=document.createElement('button');bAbrir.className='btn btn-success';bAbrir.textContent='✓ Abrir para corregir';bAbrir.style.cssText='flex:1;font-size:12px;padding:7px';
+          bAbrir.onclick=()=>autorizarCorreccion(e,true);
+          const bNo=document.createElement('button');bNo.className='btn btn-cancel';bNo.textContent='✗ Rechazar';bNo.style.cssText='flex:1;font-size:12px;padding:7px';
+          bNo.onclick=()=>autorizarCorreccion(e,false);
+          acts.appendChild(bAbrir);acts.appendChild(bNo);
+        }else{
+          const bOk=document.createElement('button');bOk.className='btn btn-success';bOk.textContent='✓ Autorizar';bOk.style.cssText='flex:1;font-size:12px;padding:7px';
+          bOk.onclick=()=>autorizarCambio(e,true);
+          const bNo=document.createElement('button');bNo.className='btn btn-cancel';bNo.textContent='✗ Rechazar';bNo.style.cssText='flex:1;font-size:12px;padding:7px';
+          bNo.onclick=()=>autorizarCambio(e,false);
+          acts.appendChild(bOk);acts.appendChild(bNo);
+        }
+        card.appendChild(acts);
         grp.appendChild(card);
       });
       list.appendChild(grp);
@@ -3511,6 +3626,22 @@ async function autorizarCambio(estadoRow,aprobar){
       await api('agenda_estados?id=eq.'+estadoRow.id,{method:'PATCH',body:JSON.stringify({auth_estado:'',updated_at:new Date().toISOString()})});
     }
     showToast(aprobar?'Autorizado ✓':'Rechazado');
+    loadCuadrillas();
+  }catch(e){showToast('Error',true);}
+}
+
+// Autoriza (o rechaza) la corrección de un trabajo ya capturado
+async function autorizarCorreccion(estadoRow,aprobar){
+  if(!confirm(aprobar?'¿Abrir este trabajo para que el técnico lo corrija? Volverá a aparecerle como pendiente.':'¿Rechazar la solicitud de corrección?'))return;
+  try{
+    if(aprobar){
+      // reabrir: quitar completado para que el técnico lo vea de nuevo, limpiar solicitud
+      await api('agenda_estados?id=eq.'+estadoRow.id,{method:'PATCH',body:JSON.stringify({completado:false,auth_estado:'',updated_at:new Date().toISOString()})});
+      // nota: el trabajo viejo queda en el sistema; el técnico capturará de nuevo. El admin puede borrar el duplicado si quiere.
+    }else{
+      await api('agenda_estados?id=eq.'+estadoRow.id,{method:'PATCH',body:JSON.stringify({auth_estado:'',updated_at:new Date().toISOString()})});
+    }
+    showToast(aprobar?'Abierto para corregir ✓':'Rechazado');
     loadCuadrillas();
   }catch(e){showToast('Error',true);}
 }
