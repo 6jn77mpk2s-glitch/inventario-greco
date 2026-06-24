@@ -1901,17 +1901,71 @@ async function confirmDest(){
   pendingMov=null;
 }
 
+// Busca si hay una liga recordada: este equipo (origen) ya se ligó antes con uno del destino
+async function buscarLigaDestino(itemData,sucDest){
+  try{
+    const q=`equipos_ligas?select=*&suc_destino=eq.${sucDest}`+
+      `&marca_origen=eq.${encodeURIComponent(itemData.marca)}`+
+      `&modelo_origen=eq.${encodeURIComponent(itemData.modelo)}`+
+      `&voltaje=eq.${encodeURIComponent(itemData.voltaje)}`+
+      `&ton=eq.${encodeURIComponent(itemData.ton)}`;
+    const ligas=await api(q);
+    if(ligas.length){
+      // Devolver el id del inventario destino que coincida con la liga
+      const l=ligas[0];
+      const inv=await api(`inventario?select=id&sucursal=eq.${sucDest}`+
+        `&marca=eq.${encodeURIComponent(l.marca_destino)}`+
+        `&modelo=eq.${encodeURIComponent(l.modelo_destino)}`+
+        `&voltaje=eq.${encodeURIComponent(itemData.voltaje)}`+
+        `&ton=eq.${encodeURIComponent(itemData.ton)}`);
+      if(inv.length)return inv[0].id;
+    }
+  }catch(e){}
+  return null;
+}
+
+// Guarda la liga para recordar que origen = destino (aunque tengan nombres distintos)
+async function guardarLiga(itemData,sucDest,destInv){
+  try{
+    await api('equipos_ligas',{method:'POST',body:JSON.stringify({
+      marca_origen:itemData.marca,modelo_origen:itemData.modelo,
+      marca_destino:destInv.marca,modelo_destino:destInv.modelo,
+      voltaje:itemData.voltaje||'',ton:itemData.ton||'',suc_destino:sucDest
+    })});
+  }catch(e){}
+}
+
 // Mueve stock a la sucursal destino (crea si no existe) y registra la entrada allá
 async function ejecutarTraspaso(tipo,nombre,cantidad,itemData,sucDest){
   try{
     if(tipo==='aire'){
-      // Buscar mismo modelo+voltaje+ton en destino
+      // 1) Buscar coincidencia EXACTA (mismo marca+modelo+voltaje+ton) en destino
       const q=`inventario?select=*&sucursal=eq.${sucDest}`+
         `&marca=eq.${encodeURIComponent(itemData.marca)}`+
         `&modelo=eq.${encodeURIComponent(itemData.modelo)}`+
         `&voltaje=eq.${encodeURIComponent(itemData.voltaje)}`+
         `&ton=eq.${encodeURIComponent(itemData.ton)}`;
-      const found=await api(q);
+      let found=await api(q);
+      // 2) Si no hay exacta, buscar por liga recordada (nombre distinto entre sucursales)
+      if(!found.length){
+        const ligaId=await buscarLigaDestino(itemData,sucDest);
+        if(ligaId){ found=await api(`inventario?select=*&id=eq.${ligaId}`); }
+      }
+      // 3) Si aún no hay, buscar mismo TON+VOLTAJE con nombre distinto y SUGERIR
+      if(!found.length){
+        const cand=await api(`inventario?select=*&sucursal=eq.${sucDest}&voltaje=eq.${encodeURIComponent(itemData.voltaje)}&ton=eq.${encodeURIComponent(itemData.ton)}`);
+        if(cand.length){
+          // Construir opciones de sugerencia
+          const opts=cand.map(x=>({label:'✓ Es el mismo que: '+x.marca+' '+x.modelo,value:String(x.id)}));
+          opts.push({label:'➕ No, es un equipo nuevo',value:'__nuevo__'});
+          const elegido=await uiChoose('¿Es el mismo equipo?',opts,'En '+(BRANCHES[sucDest]||sucDest)+' hay uno con el mismo tonelaje y voltaje pero otro nombre. ¿"'+itemData.marca+' '+itemData.modelo+'" es el mismo?');
+          if(elegido&&elegido!=='__nuevo__'){
+            found=cand.filter(x=>String(x.id)===elegido);
+            // recordar la liga para la próxima
+            if(found.length){ await guardarLiga(itemData,sucDest,found[0]); }
+          }
+        }
+      }
       if(found.length){
         const ex=found[0];
         await api(`inventario?id=eq.${ex.id}`,{method:'PATCH',body:JSON.stringify({qty:(parseInt(ex.qty)||0)+cantidad,updated_at:new Date().toISOString()})});
@@ -4576,7 +4630,7 @@ async function confirmBatch(){
       }else{
         // TRASPASO: restar aqui, sumar alla
         await restarStock(branch,batchTipo,it,cant);
-        await upsertStock(sucDest,batchTipo,it,cant);
+        await upsertStock(sucDest,batchTipo,it,cant,true);
         // movimiento salida aqui
         await registrarMovLote(batchTipo,nombre,-cant,'traspaso','','', sucDest,it.voltaje,it.ton,lote);
         // movimiento entrada alla
@@ -4592,15 +4646,32 @@ async function confirmBatch(){
   }catch(e){showToast('Error en el lote',true);}
 }
 
-// Suma stock (crea si no existe)
-async function upsertStock(suc,tipo,it,cant){
+// Suma stock (crea si no existe). esDestinoTraspaso=true activa la sugerencia de equipo equivalente.
+async function upsertStock(suc,tipo,it,cant,esDestinoTraspaso){
   if(tipo==='aire'){
     const q='inventario?select=*&sucursal=eq.'+suc+
       '&marca=eq.'+encodeURIComponent(it.marca)+
       '&modelo=eq.'+encodeURIComponent(it.modelo)+
       '&voltaje=eq.'+encodeURIComponent(it.voltaje)+
       '&ton=eq.'+encodeURIComponent(it.ton);
-    const f=await api(q);
+    let f=await api(q);
+    // Si es traspaso y no hay coincidencia exacta, intentar liga recordada o sugerir
+    if(!f.length&&esDestinoTraspaso){
+      const ligaId=await buscarLigaDestino(it,suc);
+      if(ligaId){ f=await api('inventario?select=*&id=eq.'+ligaId); }
+      if(!f.length){
+        const cand=await api('inventario?select=*&sucursal=eq.'+suc+'&voltaje=eq.'+encodeURIComponent(it.voltaje)+'&ton=eq.'+encodeURIComponent(it.ton));
+        if(cand.length){
+          const opts=cand.map(x=>({label:'✓ Es el mismo que: '+x.marca+' '+x.modelo,value:String(x.id)}));
+          opts.push({label:'➕ No, es un equipo nuevo',value:'__nuevo__'});
+          const elegido=await uiChoose('¿Es el mismo equipo?',opts,'En '+(BRANCHES[suc]||suc)+' hay uno con el mismo tonelaje ('+it.ton+') y voltaje ('+it.voltaje+') pero otro nombre. ¿"'+it.marca+' '+it.modelo+'" es el mismo?');
+          if(elegido&&elegido!=='__nuevo__'){
+            f=cand.filter(x=>String(x.id)===elegido);
+            if(f.length){ await guardarLiga(it,suc,f[0]); }
+          }
+        }
+      }
+    }
     if(f.length){await api('inventario?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:(parseInt(f[0].qty)||0)+cant,updated_at:new Date().toISOString()})});}
     else{await api('inventario',{method:'POST',body:JSON.stringify({sucursal:suc,marca:it.marca,modelo:it.modelo,voltaje:it.voltaje,ton:it.ton,qty:cant,nota:''})});}
   }else{
