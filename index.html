@@ -1090,7 +1090,7 @@ async function loadTrabajosTecnico(){
   cont.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
     let estados={};
-    try{ const est=await api('agenda_estados?select=*'); est.forEach(e=>{estados[e.uid]={estado:e.estado,cuadrilla:e.cuadrilla,aire:e.aire||'',completado:e.completado===true,auth_estado:e.auth_estado||''};}); }catch(e){}
+    try{ const est=await api('agenda_estados?select=*'); est.forEach(e=>{estados[e.uid]={estado:e.estado,cuadrilla:e.cuadrilla,aire:e.aire||'',completado:e.completado===true,auth_estado:e.auth_estado||'',orden:e.orden||0};}); }catch(e){}
     tecEstados=estados;
     let eventos=[];
     try{ const resp=await fetch('/api/agenda'); const data=await resp.json(); if(data.eventos)eventos=data.eventos; }catch(e){}
@@ -1099,7 +1099,12 @@ async function loadTrabajosTecnico(){
       if(fechaLocalISO(new Date(ev.inicio))!==hoyISO)return false;
       const e=estados[ev.uid];
       return e&&e.cuadrilla===tecnicoActual;
-    }).sort((a,b)=>new Date(a.inicio)-new Date(b.inicio));
+    }).sort((a,b)=>{
+      const oa=(estados[a.uid]&&estados[a.uid].orden)||0;
+      const ob=(estados[b.uid]&&estados[b.uid].orden)||0;
+      if(oa!==ob)return oa-ob; // orden manual primero (aprobado por admin)
+      return new Date(a.inicio)-new Date(b.inicio);
+    });
 
     if(!mios.length){
       cont.innerHTML='<div class="empty" style="text-align:center;padding:40px 20px;color:var(--muted)">No tienes trabajos asignados hoy 👍</div>';
@@ -1120,7 +1125,7 @@ async function loadTrabajosTecnico(){
     card.style.cssText='padding:16px;border-left:4px solid var(--accent2);background:var(--card);border-radius:12px';
     let horario='';
     if(ev.inicio){const d=new Date(ev.inicio);let h=d.getHours(),m=d.getMinutes();const ap=h>=12?'pm':'am';h=h%12;if(h===0)h=12;horario=h+(m?(':'+String(m).padStart(2,'0')):'')+ap;}
-    const esperandoAuth=(e.auth_estado==='cancelado'||e.auth_estado==='reagendado');
+    const esperandoAuth=(e.auth_estado==='cancelado'||e.auth_estado==='reagendado'||e.auth_estado==='reordenar');
     card.innerHTML='<div style="font-size:17px;font-weight:700">'+esc(ev.titulo||'(sin título)')+'</div>'+
       (ev.lugar?'<div style="font-size:13px;color:var(--muted);margin-top:6px">📍 '+esc(ev.lugar)+'</div>':'')+
       (horario?'<div style="font-size:13px;color:var(--accent2);margin-top:4px">🕐 '+horario+'</div>':'')+
@@ -1130,7 +1135,8 @@ async function loadTrabajosTecnico(){
     if(esperandoAuth){
       const aviso=document.createElement('div');
       aviso.style.cssText='margin-top:14px;padding:14px;background:rgba(245,158,11,.12);border:1px solid var(--orange);border-radius:10px;text-align:center';
-      aviso.innerHTML='<div style="font-size:13px;color:var(--orange);font-weight:600">⏳ Esperando autorización del administrador</div><div style="font-size:11px;color:var(--muted);margin-top:4px">Pediste marcar este trabajo como '+(e.auth_estado==='cancelado'?'cancelado':'reagendado')+'. Cuando el admin lo autorice, podrás continuar.</div>';
+      const queMsg=e.auth_estado==='reordenar'?'posponer este trabajo (hacer el siguiente primero)':('marcar este trabajo como '+(e.auth_estado==='cancelado'?'cancelado':'reagendado'));
+      aviso.innerHTML='<div style="font-size:13px;color:var(--orange);font-weight:600">⏳ Esperando autorización del administrador</div><div style="font-size:11px;color:var(--muted);margin-top:4px">Pediste '+queMsg+'. Cuando el admin lo autorice, podrás continuar.</div>';
       cont.appendChild(aviso);
       const rb=document.createElement('button');rb.className='btn btn-ghost';rb.textContent='↻ Revisar si ya me autorizaron';rb.style.cssText='width:100%;margin-top:10px';
       rb.onclick=()=>loadTrabajosTecnico();
@@ -1146,6 +1152,12 @@ async function loadTrabajosTecnico(){
     const bOtro=document.createElement('button');bOtro.className='btn btn-ghost';bOtro.textContent='No se pudo hacer (cancelar / reagendar)';bOtro.style.cssText='width:100%;padding:11px;font-size:13px';
     bOtro.onclick=()=>tecPedirCambio(ev);
     acts.appendChild(bOtro);
+    // Posponer: solo tiene sentido si hay más de un trabajo pendiente
+    if(pendientes.length>1){
+      const bMover=document.createElement('button');bMover.className='btn btn-ghost';bMover.textContent='⏭ Hacer otro primero (posponer este)';bMover.style.cssText='width:100%;padding:11px;font-size:13px';
+      bMover.onclick=()=>tecPedirReordenar(ev);
+      acts.appendChild(bMover);
+    }
     cont.appendChild(acts);
 
     // Trabajos ya terminados hoy (con opción de pedir corrección)
@@ -1282,6 +1294,16 @@ function abrirCapturaTecnico(ev){
 }
 
 // David pide cancelar/reagendar -> requiere autorización del admin
+// David pide posponer este trabajo (hacer el siguiente primero) -> requiere autorización
+async function tecPedirReordenar(ev){
+  if(!await uiConfirm('¿Pedir mover este trabajo para más tarde?',{sub:'El admin debe autorizarlo. Mientras, seguirás viendo este trabajo.',ok:'⏭ Pedir mover'}))return;
+  try{
+    await guardarEstadoTecnico(ev.uid,{auth_estado:'reordenar'});
+    showToast('Solicitud enviada al admin ⏳');
+    loadTrabajosTecnico();
+  }catch(e){showToast('Error',true);}
+}
+
 async function tecPedirCambio(ev){
   const opt=await uiChoose('¿Qué pasó con el trabajo?',[
     {label:'🔴 Cancelado',value:'cancelado'},
@@ -1305,6 +1327,7 @@ async function guardarEstadoTecnico(uid,cambios){
   if(cambios.auth_estado!==undefined)payload.auth_estado=cambios.auth_estado;
   if(cambios.aire!==undefined)payload.aire=cambios.aire;
   if(cambios.capturado!==undefined)payload.capturado=cambios.capturado;
+  if(cambios.orden!==undefined)payload.orden=cambios.orden;
   payload.updated_at=new Date().toISOString();
   if(ex.length){
     await api('agenda_estados?id=eq.'+ex[0].id,{method:'PATCH',body:JSON.stringify(payload)});
@@ -3792,7 +3815,8 @@ async function cargarAvisoAutorizaciones(list){
       const ev=eventos.find(x=>x.uid===e.uid);
       const titulo=ev?ev.titulo:'(trabajo)';
       const esCorr=e.auth_estado==='correccion';
-      const pide=e.auth_estado==='cancelado'?'🔴 Cancelar':(e.auth_estado==='reagendado'?'🟡 Reagendar':'✏️ Corregir trabajo');
+      const esReord=e.auth_estado==='reordenar';
+      const pide=e.auth_estado==='cancelado'?'🔴 Cancelar':(e.auth_estado==='reagendado'?'🟡 Reagendar':(esReord?'⏭ Posponer (hacer otro primero)':'✏️ Corregir trabajo'));
       const card=document.createElement('div');card.className='item';card.style.cssText='padding:12px 14px;border-left:3px solid var(--orange)';
       card.innerHTML='<div style="font-size:13px;font-weight:600">👷 '+esc(e.cuadrilla||'?')+' pide: '+pide+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px">'+esc(titulo)+'</div>';
       const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;margin-top:8px';
@@ -3802,6 +3826,12 @@ async function cargarAvisoAutorizaciones(list){
         const bNo=document.createElement('button');bNo.className='btn btn-cancel';bNo.textContent='✗ Rechazar';bNo.style.cssText='flex:1;font-size:12px;padding:7px';
         bNo.onclick=()=>autorizarCorreccion(e,false);
         acts.appendChild(bAbrir);acts.appendChild(bNo);
+      }else if(esReord){
+        const bOk=document.createElement('button');bOk.className='btn btn-success';bOk.textContent='✓ Autorizar mover';bOk.style.cssText='flex:1;font-size:12px;padding:7px';
+        bOk.onclick=()=>autorizarReordenar(e,true);
+        const bNo=document.createElement('button');bNo.className='btn btn-cancel';bNo.textContent='✗ Rechazar';bNo.style.cssText='flex:1;font-size:12px;padding:7px';
+        bNo.onclick=()=>autorizarReordenar(e,false);
+        acts.appendChild(bOk);acts.appendChild(bNo);
       }else{
         const bOk=document.createElement('button');bOk.className='btn btn-success';bOk.textContent='✓ Autorizar';bOk.style.cssText='flex:1;font-size:12px;padding:7px';
         bOk.onclick=()=>autorizarCambio(e,true);
@@ -3916,6 +3946,21 @@ async function loadCuadrillasOLD(){
   }catch(e){
     list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
   }
+}
+
+// Autoriza (o rechaza) posponer un trabajo: le pone un orden alto para que pase al final de la fila
+async function autorizarReordenar(estadoRow,aprobar){
+  if(!await uiConfirm(aprobar?'¿Autorizar mover este trabajo para más tarde?':'¿Rechazar la solicitud?',{sub:aprobar?'Pasará al final de la fila del técnico':''}))return;
+  try{
+    if(aprobar){
+      const nuevoOrden=Date.now(); // un orden grande lo manda al final
+      await api('agenda_estados?id=eq.'+estadoRow.id,{method:'PATCH',body:JSON.stringify({orden:nuevoOrden,auth_estado:'',updated_at:new Date().toISOString()})});
+    }else{
+      await api('agenda_estados?id=eq.'+estadoRow.id,{method:'PATCH',body:JSON.stringify({auth_estado:'',updated_at:new Date().toISOString()})});
+    }
+    showToast(aprobar?'Movido al final ✓':'Rechazado');
+    loadCuadrillas();
+  }catch(e){showToast('Error',true);}
 }
 
 async function autorizarCambio(estadoRow,aprobar){
