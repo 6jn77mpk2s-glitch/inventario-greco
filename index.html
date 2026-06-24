@@ -787,6 +787,25 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 </div>
 
 <!-- MODAL CONTROL CABLE -->
+<!-- MODAL REPONER AL ESTÁNDAR (por cuadrilla) -->
+<div class="modal" id="modalRepoEstandar" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-sheet">
+    <div class="modal-title">📦 Reponer material — <span id="repoTecNombre"></span></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Lo que gastó desde la última reposición. Repón para volver al estándar. (Base de techo y cable se reponen aparte.)</div>
+    <div class="field" style="margin-bottom:10px">
+      <label>Sucursal de donde sale el material</label>
+      <select id="repoSucursal">
+        <option value="sur">SUR</option>
+        <option value="centro">CENTRO</option>
+        <option value="soriana">SORIANA</option>
+      </select>
+    </div>
+    <div id="repoEstandarLista"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+    <button class="btn btn-ghost" style="width:100%;margin-top:10px;font-size:12px" onclick="editarEstandar()">⚙️ Cambiar cantidades estándar</button>
+    <button class="btn btn-ghost" style="width:100%;margin-top:6px" onclick="document.getElementById('modalRepoEstandar').classList.remove('open')">Cerrar</button>
+  </div>
+</div>
+
 <div class="modal" id="modalCable" onclick="closeCableBg(event)">
   <div class="modal-sheet">
     <div class="modal-title">📋 Material en poder de técnicos</div>
@@ -3021,6 +3040,22 @@ const MAP_MATERIAL_SALDO={
   'base_goma':'Base de techo goma','base_metal':'Base de techo metal',
   'centro_2':'Centro de carga 2 pastillas','centro_4':'Centro de carga 4 pastillas'
 };
+// Estándar de material que cada técnico debe traer (igual para todos). Base de techo y cable NO entran (manuales).
+// Editable en runtime; se carga de la tabla estandar_material si existe.
+let ESTANDAR_MATERIAL={
+  'Breaker de patas':8,
+  'Breaker de ranura':6,
+  'Base 1 ton':3,
+  'Base 2 ton':2,
+  'Centro de carga 2 pastillas':3,
+  'Centro de carga 4 pastillas':4
+};
+async function cargarEstandar(){
+  try{
+    const rows=await api('estandar_material?select=*');
+    if(rows&&rows.length){ rows.forEach(r=>{ESTANDAR_MATERIAL[r.material]=parseFloat(r.cantidad)||0;}); }
+  }catch(e){}
+}
 
 let desgloseItems=[]; // [{tipo, ...campos, monto, nombreVisible, pagaTecnico, descuentaMaterial}]
 
@@ -3774,6 +3809,90 @@ let cajaPendPagados=[]; // pendientes (DEBEN) ya cobrados
 let transfPendientes=[]; // transferencias por asignar a una cuenta
 let cortesEntregados=[]; // cortes de efectivo ya entregados
 
+// ════════ REPONER MATERIAL AL ESTÁNDAR (por cuadrilla) ════════
+let repoTecnicoActual=null;
+async function abrirRepoEstandar(tecnico){
+  repoTecnicoActual=tecnico;
+  document.getElementById('repoTecNombre').textContent=tecnico;
+  document.getElementById('repoSucursal').value='sur';
+  document.getElementById('modalRepoEstandar').classList.add('open');
+  await cargarEstandar();
+  await renderRepoEstandar();
+}
+
+async function renderRepoEstandar(){
+  const cont=document.getElementById('repoEstandarLista');
+  cont.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    const saldos=await api('material_tecnicos?select=*&tecnico=eq.'+encodeURIComponent(repoTecnicoActual));
+    const saldoDe=(mat)=>{const r=saldos.find(x=>x.material===mat);return r?(parseFloat(r.cantidad)||0):0;};
+    cont.innerHTML='';
+    let algo=false;
+    Object.keys(ESTANDAR_MATERIAL).forEach(mat=>{
+      const std=ESTANDAR_MATERIAL[mat];
+      const trae=saldoDe(mat);
+      const falta=Math.max(0,std-trae);
+      algo=true;
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:7px';
+      const bajo=trae<=2;
+      row.innerHTML='<div style="flex:1"><div style="font-size:13px;font-weight:600">'+esc(mat)+'</div>'+
+        '<div style="font-size:11px;color:var(--muted)">Trae <b style="color:'+(bajo?'var(--red)':'var(--text)')+'">'+trae+'</b> de '+std+(falta>0?' · faltan <b style="color:var(--orange)">'+falta+'</b>':' · completo ✓')+'</div></div>';
+      if(falta>0){
+        const b=document.createElement('button');b.className='btn btn-success';b.textContent='Reponer '+falta;b.style.cssText='font-size:12px;padding:7px 12px;white-space:nowrap';
+        b.onclick=()=>reponerUnoEstandar(mat,falta,std);
+        row.appendChild(b);
+      }
+      cont.appendChild(row);
+    });
+    if(!algo)cont.innerHTML='<div class="empty">Sin estándar configurado.</div>';
+  }catch(e){
+    cont.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
+  }
+}
+
+async function reponerUnoEstandar(material,falta,std){
+  const suc=document.getElementById('repoSucursal').value;
+  if(!await uiConfirm('¿Reponer '+falta+' × '+material+'?',{sub:'Sale de '+(BRANCHES[suc]||suc)+' y el técnico vuelve a '+std,ok:'📦 Reponer'}))return;
+  try{
+    // 1) subir el saldo del técnico al estándar
+    await ajustarMaterialTecnico(repoTecnicoActual,material,falta);
+    // 2) descontar del inventario de materiales de la sucursal
+    const f=await api('materiales?select=*&sucursal=eq.'+suc+'&nombre=eq.'+encodeURIComponent(material));
+    if(f.length){
+      const nuevo=Math.max(0,(parseInt(f[0].qty)||0)-falta);
+      await api('materiales?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({qty:nuevo,updated_at:new Date().toISOString()})});
+    }
+    // 3) registrar el movimiento (salida a técnico)
+    await api('movimientos',{method:'POST',body:JSON.stringify({
+      sucursal:suc,tipo:'material',nombre:material,cantidad:-falta,destino:'interno',
+      tecnico:repoTecnicoActual,motivo:'Reposición al estándar',sucursal_destino:'',
+      usuario:currentUser||'',fecha:new Date().toISOString()
+    })});
+    showToast('Repuesto ✓');
+    renderRepoEstandar();
+  }catch(e){showToast('Error al reponer',true);}
+}
+
+// Editar las cantidades estándar (se guardan en la tabla estandar_material)
+async function editarEstandar(){
+  const mats=Object.keys(ESTANDAR_MATERIAL);
+  const opts=mats.map(m=>({label:m+' (actual: '+ESTANDAR_MATERIAL[m]+')',value:m}));
+  const mat=await uiChoose('¿Qué material quieres ajustar?',opts);
+  if(!mat)return;
+  const nuevo=await uiInput('Nuevo estándar para '+mat,{placeholder:String(ESTANDAR_MATERIAL[mat])});
+  if(nuevo===null)return;
+  const val=parseFloat(nuevo)||0;
+  ESTANDAR_MATERIAL[mat]=val;
+  try{
+    const f=await api('estandar_material?select=*&material=eq.'+encodeURIComponent(mat));
+    if(f.length){ await api('estandar_material?id=eq.'+f[0].id,{method:'PATCH',body:JSON.stringify({cantidad:val})}); }
+    else{ await api('estandar_material',{method:'POST',body:JSON.stringify({material:mat,cantidad:val})}); }
+    showToast('Estándar actualizado ✓');
+  }catch(e){showToast('Se cambió localmente (no se pudo guardar)',true);}
+  renderRepoEstandar();
+}
+
 // ════════ CUADRILLAS (vista admin) ════════
 // Técnicos que el admin puede "ver como" (tú me vas diciendo cuáles habilitar)
 const CUADRILLAS_VERCOMO=['David','Alan','Eduardo'];
@@ -3791,9 +3910,18 @@ function loadCuadrillas(){
   CUADRILLAS_VERCOMO.forEach(nombre=>{
     const card=document.createElement('div');
     card.className='item';
-    card.style.cssText='padding:18px;margin-bottom:10px;background:var(--card);border-radius:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center';
-    card.innerHTML='<span style="font-size:16px;font-weight:700">👷 '+esc(nombre)+'</span><span style="color:#c084fc;font-size:13px">Ver todo ›</span>';
-    card.onclick=()=>entrarVerComo(nombre);
+    card.style.cssText='padding:16px 18px;margin-bottom:10px;background:var(--card);border-radius:12px';
+    const top=document.createElement('div');
+    top.style.cssText='display:flex;justify-content:space-between;align-items:center;cursor:pointer';
+    top.innerHTML='<span style="font-size:16px;font-weight:700">👷 '+esc(nombre)+'</span><span style="color:#c084fc;font-size:13px">Ver todo ›</span>';
+    top.onclick=()=>entrarVerComo(nombre);
+    card.appendChild(top);
+    const repo=document.createElement('button');
+    repo.className='btn btn-ghost';
+    repo.textContent='📦 Reponer material';
+    repo.style.cssText='width:100%;margin-top:10px;font-size:13px';
+    repo.onclick=(e)=>{e.stopPropagation();abrirRepoEstandar(nombre);};
+    card.appendChild(repo);
     list.appendChild(card);
   });
   // Resumen rápido de autorizaciones pendientes (para que no tengas que entrar a cada una)
