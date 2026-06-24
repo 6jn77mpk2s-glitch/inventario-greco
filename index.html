@@ -1184,10 +1184,47 @@ async function tecPedirCorreccion(ev){
 
 // David termina -> primero liga el aire instalado, luego abre la captura del trabajo
 async function tecTerminarTrabajo(ev){
+  // ¿Fue una instalación normal o solo una garantía?
+  const tipo=await uiChoose('¿Cómo terminó este trabajo?',[
+    {label:'🔧 Instalación / trabajo normal',value:'normal'},
+    {label:'🛡️ Fue solo una garantía',value:'garantia'}
+  ]);
+  if(!tipo)return;
+  if(tipo==='garantia'){ await terminarGarantia(ev); return; }
   // 1) preguntar qué aire se instaló (como en agenda) y descontarlo
   await ligarAireInstaladoTec(ev,tecnicoActual);
   // 2) abrir el formulario de captura en modo técnico
   abrirCapturaTecnico(ev);
+}
+
+// Garantía: no se cobra; pregunta opcionalmente si usó material
+async function terminarGarantia(ev){
+  const usoMat=await uiChoose('¿Usaste material en la garantía?',[
+    {label:'No usé material',value:'no'},
+    {label:'Sí, anotar material usado',value:'si'}
+  ],'No es obligatorio');
+  if(usoMat===null)return;
+  let notaMat='';
+  if(usoMat==='si'){
+    notaMat=await uiInput('¿Qué material usaste?',{tipo:'texto',placeholder:'ej. 1 brake, 3m cable'});
+    if(notaMat===null)notaMat='';
+  }
+  // Registrar la garantía como un trabajo sin cobro (total 0), ligado a la agenda
+  try{
+    const fecha=ev.inicio?fechaLocalISO(new Date(ev.inicio)):fechaLocalISO(new Date());
+    const desg=[{nombre:'🛡️ Garantía (sin cobro)'+(notaMat?' · Material: '+notaMat:''),monto:0}];
+    await api('trabajos',{method:'POST',body:JSON.stringify({
+      fecha, semana:semanaIdDeFecha(fecha), cuadrilla:tecnicoActual,
+      desglose:JSON.stringify(desg), con_factura:false, subtotal:0, total:0, cobrado:0,
+      forma_pago:'', quien_cobra:'', pagos:JSON.stringify([]),
+      pago_tecnico:0, pago_ayudante:0, pago_atrasado:0, pago_atrasado_nota:'',
+      nota:'Garantía'+(notaMat?' — '+notaMat:''), usuario:tecnicoActual,
+      agenda_uid:ev.uid, es_garantia:true
+    })});
+    await guardarEstadoTecnico(ev.uid,{estado:'instalado',completado:true,auth_estado:'',capturado:true});
+    showToast('Garantía registrada ✓');
+    loadTrabajosTecnico();
+  }catch(e){showToast('Error al registrar',true);}
 }
 
 // Igual que ligarAireInstalado pero sin cambiar estado (solo descuenta y guarda el aire)
@@ -1195,14 +1232,21 @@ async function ligarAireInstaladoTec(ev,cuad){
   const fechaTrabajo=ev.inicio?fechaLocalISO(new Date(ev.inicio)):fechaLocalISO(new Date());
   let opciones=[{label:'🛠️ Ninguno / solo mantenimiento',value:'__ninguno__'}];
   try{
-    const movs=await api('movimientos?select=*&tecnico=eq.'+encodeURIComponent(cuad)+'&tipo=eq.aire&destino=eq.interno');
+    const movs=await api('movimientos?select=*&tecnico=eq.'+encodeURIComponent(cuad)+'&tipo=eq.aire');
     const delDia=movs.filter(m=>m.fecha&&fechaLocalISO(new Date(m.fecha))===fechaTrabajo);
-    const vistos={};
+    // contar neto por equipo: lo que trae (interno) menos lo ya instalado/devuelto ese día
+    const neto={};
     delDia.forEach(m=>{
       const key=m.nombre+'|'+(m.voltaje||'')+'|'+(m.ton||'');
-      if(!vistos[key]){vistos[key]=true;
-        const label=m.nombre+(m.voltaje||m.ton?' ('+(m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||'')+')':'');
-        opciones.push({label:'🌬 '+label,value:JSON.stringify({nombre:m.nombre,voltaje:m.voltaje||'',ton:m.ton||''})});}
+      if(!neto[key])neto[key]={n:0,nombre:m.nombre,voltaje:m.voltaje||'',ton:m.ton||''};
+      if(m.destino==='interno')neto[key].n+=Math.abs(m.cantidad);
+      else neto[key].n-=Math.abs(m.cantidad); // instalado, devuelto, etc. restan
+    });
+    Object.values(neto).forEach(o=>{
+      if(o.n>0){ // solo mostrar los que todavía trae (no instalados)
+        const label=o.nombre+(o.voltaje||o.ton?' ('+(o.voltaje||'')+(o.voltaje&&o.ton?' · ':'')+(o.ton||'')+')':'');
+        opciones.push({label:'🌬 '+label,value:JSON.stringify({nombre:o.nombre,voltaje:o.voltaje,ton:o.ton})});
+      }
     });
   }catch(e){}
   const sel=await uiChoose('¿Qué aire instalaste?',opciones,'De los que traes hoy');
@@ -2164,16 +2208,20 @@ async function ligarAireInstalado(ev,cuad){
   // buscar aires asignados a ese técnico ese día (movimientos interno aire)
   let opciones=[{label:'🛠️ Ninguno / solo mantenimiento',value:'__ninguno__'}];
   try{
-    const movs=await api('movimientos?select=*&tecnico=eq.'+encodeURIComponent(cuad)+'&tipo=eq.aire&destino=eq.interno');
+    const movs=await api('movimientos?select=*&tecnico=eq.'+encodeURIComponent(cuad)+'&tipo=eq.aire');
     const delDia=movs.filter(m=>m.fecha&&fechaLocalISO(new Date(m.fecha))===fechaTrabajo);
-    // agrupar por modelo+volt+ton
-    const vistos={};
+    // contar neto: lo que trae (interno) menos lo ya instalado/devuelto ese día
+    const neto={};
     delDia.forEach(m=>{
       const key=m.nombre+'|'+(m.voltaje||'')+'|'+(m.ton||'');
-      if(!vistos[key]){
-        vistos[key]=true;
-        const label=m.nombre+(m.voltaje||m.ton?' ('+(m.voltaje||'')+(m.voltaje&&m.ton?' · ':'')+(m.ton||'')+')':'');
-        opciones.push({label:'🌬 '+label,value:JSON.stringify({nombre:m.nombre,voltaje:m.voltaje||'',ton:m.ton||''})});
+      if(!neto[key])neto[key]={n:0,nombre:m.nombre,voltaje:m.voltaje||'',ton:m.ton||''};
+      if(m.destino==='interno')neto[key].n+=Math.abs(m.cantidad);
+      else neto[key].n-=Math.abs(m.cantidad);
+    });
+    Object.values(neto).forEach(o=>{
+      if(o.n>0){
+        const label=o.nombre+(o.voltaje||o.ton?' ('+(o.voltaje||'')+(o.voltaje&&o.ton?' · ':'')+(o.ton||'')+')':'');
+        opciones.push({label:'🌬 '+label,value:JSON.stringify({nombre:o.nombre,voltaje:o.voltaje,ton:o.ton})});
       }
     });
   }catch(e){}
@@ -2608,6 +2656,12 @@ function semanaId(offset){
   const l=lunesDeSemana(offset);
   // ISO week-ish id basado en lunes
   return fmtFecha(l);
+}
+function semanaIdDeFecha(fecha){
+  const fd=new Date(fecha+'T12:00:00');
+  const day=(fd.getDay()+6)%7;
+  const lunes=new Date(fd);lunes.setDate(fd.getDate()-day);
+  return fmtFecha(lunes);
 }
 function nombreMes(m){return ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][m];}
 
