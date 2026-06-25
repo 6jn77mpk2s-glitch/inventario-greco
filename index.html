@@ -1981,21 +1981,18 @@ async function guardarLiga(itemData,sucDest,destInv){
 async function ejecutarTraspaso(tipo,nombre,cantidad,itemData,sucDest){
   try{
     if(tipo==='aire'){
-      // 1) Buscar coincidencia EXACTA (mismo marca+modelo+voltaje+ton) en destino
-      const q=`inventario?select=*&sucursal=eq.${sucDest}`+
-        `&marca=eq.${encodeURIComponent(itemData.marca)}`+
-        `&modelo=eq.${encodeURIComponent(itemData.modelo)}`+
-        `&voltaje=eq.${encodeURIComponent(itemData.voltaje)}`+
-        `&ton=eq.${encodeURIComponent(itemData.ton)}`;
-      let found=await api(q);
+      // 1) Buscar coincidencia (mismo voltaje+ton; marca/modelo sin distinguir mayúsculas ni espacios)
+      const normTxt=(s)=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+      const mismaSuc=await api(`inventario?select=*&sucursal=eq.${sucDest}&voltaje=eq.${encodeURIComponent(itemData.voltaje)}&ton=eq.${encodeURIComponent(itemData.ton)}`);
+      let found=mismaSuc.filter(x=>normTxt(x.marca)===normTxt(itemData.marca)&&normTxt(x.modelo)===normTxt(itemData.modelo));
       // 2) Si no hay exacta, buscar por liga recordada (nombre distinto entre sucursales)
       if(!found.length){
         const ligaId=await buscarLigaDestino(itemData,sucDest);
         if(ligaId){ found=await api(`inventario?select=*&id=eq.${ligaId}`); }
       }
-      // 3) Si aún no hay, buscar mismo TON+VOLTAJE con nombre distinto y SUGERIR
+      // 3) Si aún no hay, sugerir entre los del mismo TON+VOLTAJE con nombre distinto
       if(!found.length){
-        const cand=await api(`inventario?select=*&sucursal=eq.${sucDest}&voltaje=eq.${encodeURIComponent(itemData.voltaje)}&ton=eq.${encodeURIComponent(itemData.ton)}`);
+        const cand=mismaSuc;
         if(cand.length){
           // Construir opciones de sugerencia
           const opts=cand.map(x=>({label:'✓ Es el mismo que: '+x.marca+' '+x.modelo,value:String(x.id)}));
@@ -4822,18 +4819,15 @@ async function confirmBatch(){
 // Suma stock (crea si no existe). esDestinoTraspaso=true activa la sugerencia de equipo equivalente.
 async function upsertStock(suc,tipo,it,cant,esDestinoTraspaso){
   if(tipo==='aire'){
-    const q='inventario?select=*&sucursal=eq.'+suc+
-      '&marca=eq.'+encodeURIComponent(it.marca)+
-      '&modelo=eq.'+encodeURIComponent(it.modelo)+
-      '&voltaje=eq.'+encodeURIComponent(it.voltaje)+
-      '&ton=eq.'+encodeURIComponent(it.ton);
-    let f=await api(q);
-    // Si es traspaso y no hay coincidencia exacta, intentar liga recordada o sugerir
+    const normTxt=(s)=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+    const mismaSuc=await api('inventario?select=*&sucursal=eq.'+suc+'&voltaje=eq.'+encodeURIComponent(it.voltaje)+'&ton=eq.'+encodeURIComponent(it.ton));
+    let f=mismaSuc.filter(x=>normTxt(x.marca)===normTxt(it.marca)&&normTxt(x.modelo)===normTxt(it.modelo));
+    // Si es traspaso y no hay coincidencia, intentar liga recordada o sugerir
     if(!f.length&&esDestinoTraspaso){
       const ligaId=await buscarLigaDestino(it,suc);
       if(ligaId){ f=await api('inventario?select=*&id=eq.'+ligaId); }
       if(!f.length){
-        const cand=await api('inventario?select=*&sucursal=eq.'+suc+'&voltaje=eq.'+encodeURIComponent(it.voltaje)+'&ton=eq.'+encodeURIComponent(it.ton));
+        const cand=mismaSuc;
         if(cand.length){
           const opts=cand.map(x=>({label:'✓ Es el mismo que: '+x.marca+' '+x.modelo,value:String(x.id)}));
           opts.push({label:'➕ No, es un equipo nuevo',value:'__nuevo__'});
