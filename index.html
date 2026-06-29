@@ -940,7 +940,7 @@ const URL_SB='https://mvenmzrfkmyfftwswxtq.supabase.co';
 const KEY_SB='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZW5tenJma215ZmZ0d3N3eHRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTYxMTUsImV4cCI6MjA5MjUzMjExNX0.Rged1qWORiY2l7wLL9rM-aRvEnwJa58BVBdYvLI4qyw';
 const PIN='18';
 // Contraseñas de técnicos (acceso limitado solo a sus trabajos del día)
-const TECNICO_PASSWORDS={'100':'David','183':'Eduardo','191':'Alan'};
+const TECNICO_PASSWORDS={'100':'David','183':'Eduardo','191':'Alan','225':'Alejandro'};
 
 let branch=null,aires=[],mats=[],movimientos=[],activeFilter='ALL',filterVisible=false,activeTab='aires';
 
@@ -2399,7 +2399,7 @@ async function loadTecnicos(){
 
 function renderTecnicos(movs){
   const list=document.getElementById('listTec');
-  const techs=['Alan','Eduardo','Henry','David'];
+  const techs=['Alan','Eduardo','Henry','David','Alejandro'];
 
   // Solo movimientos del día seleccionado, asignaciones (interno) y devoluciones
   const delDia=movs.filter(m=>{
@@ -3074,7 +3074,7 @@ function openTrabajoModal(){
   document.getElementById('trabModalTitle').textContent='➕ Nuevo trabajo';
   document.getElementById('trabFecha').value=fmtFecha(new Date());
   // Cuadrilla por defecto = nombre del perfil si es técnico, si no sin seleccionar
-  const tecnicos=['Alan','Eduardo','Henry','David'];
+  const tecnicos=['Alan','Eduardo','Henry','David','Alejandro'];
   document.getElementById('trabCuadrilla').value=tecnicos.includes(currentUser)?currentUser:'';
   document.getElementById('trabFactura').checked=false;
   document.getElementById('trabPagoTec').value='';document.getElementById('trabPagoTec').dataset.touched='';
@@ -3892,7 +3892,7 @@ async function editarEstandar(){
 
 // ════════ CUADRILLAS (vista admin) ════════
 // Técnicos que el admin puede "ver como" (tú me vas diciendo cuáles habilitar)
-const CUADRILLAS_VERCOMO=['David','Alan','Eduardo'];
+const CUADRILLAS_VERCOMO=['David','Alan','Eduardo','Alejandro'];
 let adminUser=null;   // guarda tu usuario real mientras ves como otro
 let viendoComo=null;  // a quién estás viendo
 
@@ -4041,7 +4041,7 @@ async function loadCuadrillasOLD(){
     }
 
     // 2) Progreso de hoy por cuadrilla
-    const techs=['Alan','Eduardo','Henry','David'];
+    const techs=['Alan','Eduardo','Henry','David','Alejandro'];
     techs.forEach(t=>{
       const delDia=eventos.filter(ev=>{
         if(!ev.inicio||fechaLocalISO(new Date(ev.inicio))!==hoyISO)return false;
@@ -4972,7 +4972,7 @@ async function openCablePanel(){
   document.getElementById('modalCable').classList.add('open');
   document.getElementById('cableLista').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
-    const techs=['Alan','Eduardo','Henry','David'];
+    const techs=['Alan','Eduardo','Henry','David','Alejandro'];
     // Cable
     let rows=await api('cable_tecnicos?select=*');
     for(const t of techs){if(!rows.find(r=>r.tecnico===t)){await api('cable_tecnicos',{method:'POST',body:JSON.stringify({tecnico:t,metros:0})});}}
@@ -4990,7 +4990,7 @@ function closeCableBg(e){if(e.target===document.getElementById('modalCable'))clo
 function renderMaterialPanel(){
   const cont=document.getElementById('cableLista');
   cont.innerHTML='';
-  const techs=['Alan','Eduardo','Henry','David'];
+  const techs=['Alan','Eduardo','Henry','David','Alejandro'];
   techs.forEach(t=>{
     const card=document.createElement('div');
     card.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px';
