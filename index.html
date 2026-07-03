@@ -390,6 +390,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <div class="filter-chip" onclick="setFilter('220v',this)">220V</div>
     </div>
     <div class="list" id="listAires"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+    <div class="list" id="otrasSucAires"></div>
   </div>
 
   <div id="secMat" style="display:none">
@@ -405,6 +406,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <input class="search-input" id="searchMat" placeholder="🔎 Buscar material..." oninput="renderMats()">
     </div>
     <div class="list" id="listMat"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+    <div class="list" id="otrasSucMats"></div>
   </div>
 
   <div id="secMov" style="display:none">
@@ -1731,9 +1733,80 @@ function mkField(labelText){
 }
 
 // ── RENDER AIRES ──
+// ── BÚSQUEDA EN OTRAS SUCURSALES (solo módulo inventarios/admin) ──
+let otrasSucTimer=null;
+let otrasSucCache={data:null,ts:0}; // cache 60s del inventario de otras sucursales
+
+function renderOtrasSucursales(tipo){
+  // debounce para no consultar en cada tecla
+  clearTimeout(otrasSucTimer);
+  otrasSucTimer=setTimeout(()=>doRenderOtrasSucursales(tipo),350);
+}
+
+async function doRenderOtrasSucursales(tipo){
+  const contId=tipo==='aire'?'otrasSucAires':'otrasSucMats';
+  const cont=document.getElementById(contId);
+  if(!cont)return;
+  const sEl=document.getElementById(tipo==='aire'?'searchAires':'searchMat');
+  const q=sEl?sEl.value.trim().toLowerCase():'';
+  // Solo mostrar cuando hay búsqueda activa
+  if(!q){cont.innerHTML='';return;}
+  try{
+    // cache de 60s para no pegarle a la base en cada búsqueda
+    const now=Date.now();
+    if(!otrasSucCache.data||now-otrasSucCache.ts>60000){
+      const [inv,mat]=await Promise.all([
+        api('inventario?select=*'),
+        api('materiales?select=*')
+      ]);
+      otrasSucCache={data:{inv,mat},ts:now};
+    }
+    const otras=['sur','centro','soriana'].filter(s=>s!==branch);
+    const grpCont=document.createElement('div');
+    let hayAlgo=false;
+    otras.forEach(suc=>{
+      let rows=[];
+      if(tipo==='aire'){
+        rows=otrasSucCache.data.inv.filter(x=>x.sucursal===suc&&(parseInt(x.qty)||0)>0&&
+          (x.modelo+' '+x.marca+' '+x.voltaje+' '+x.ton).toLowerCase().includes(q));
+      }else{
+        rows=otrasSucCache.data.mat.filter(x=>x.sucursal===suc&&(parseInt(x.qty)||0)>0&&
+          (x.nombre+' '+(x.nota||'')).toLowerCase().includes(q));
+      }
+      if(!rows.length)return;
+      hayAlgo=true;
+      const grp=document.createElement('div');grp.className='marca-group';
+      const hdr=document.createElement('div');hdr.className='marca-header';
+      hdr.style.color='var(--accent2)';
+      hdr.textContent='📍 EN '+(BRANCHES[suc]||suc).toUpperCase();
+      grp.appendChild(hdr);
+      rows.forEach(item=>{
+        const card=document.createElement('div');card.className='item';
+        card.style.opacity='.85';
+        if(tipo==='aire'){
+          card.innerHTML='<div class="item-main"><div class="item-info"><div class="item-model">'+esc(item.modelo)+'</div><div class="item-meta"><span class="tag">'+esc(item.marca)+'</span><span class="tag">'+esc(item.voltaje)+'</span><span class="tag">'+esc(item.ton)+'</span></div></div><div class="item-qty">'+item.qty+'</div></div>';
+        }else{
+          card.innerHTML='<div class="item-main"><div class="item-info"><div class="item-model">'+esc(item.nombre)+'</div>'+(item.nota?'<div class="item-meta"><span class="tag">'+esc(item.nota)+'</span></div>':'')+'</div><div class="item-qty">'+item.qty+'</div></div>';
+        }
+        grp.appendChild(card);
+      });
+      grpCont.appendChild(grp);
+    });
+    cont.innerHTML='';
+    if(hayAlgo){
+      const titulo=document.createElement('div');
+      titulo.style.cssText='font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px;text-align:center';
+      titulo.textContent='— En otras sucursales —';
+      cont.appendChild(titulo);
+      cont.appendChild(grpCont);
+    }
+  }catch(e){cont.innerHTML='';}
+}
+
 function renderAires(){
   const list=document.getElementById('listAires');
   const filtered=aires.filter(matches);
+  renderOtrasSucursales('aire');
   if(!filtered.length){list.innerHTML='<div class="empty">Sin resultados</div>';return;}
   const mo={COLDEN:0,DUVENTUS:1,MIRAGE:2};
   const groups={};
@@ -1777,6 +1850,7 @@ function renderMats(){
   mats.sort((a,b)=>((a.qty===0?1:0)-(b.qty===0?1:0))||a.nombre.localeCompare(b.nombre));
   const sEl=document.getElementById('searchMat');
   const q=sEl?sEl.value.trim().toLowerCase():'';
+  renderOtrasSucursales('material');
   const visible=q?mats.filter(m=>(m.nombre+' '+(m.nota||'')).toLowerCase().includes(q)):mats;
   list.innerHTML='';
   if(!visible.length){list.innerHTML='<div class="empty">Sin resultados</div>';updateStats();return;}
