@@ -240,6 +240,34 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .quick-btn{flex:1;min-width:30%;font-size:12px;font-weight:600;padding:10px 8px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);border-radius:9px;color:var(--accent2);cursor:pointer;font-family:var(--sans);transition:all .12s;}
 .quick-btn:active{background:var(--accent);color:#fff;transform:scale(.97);}
 
+
+/* ═══════ ESCRITORIO (≥1024px): dashboard con menú lateral (solo módulo Trabajos) ═══════ */
+@media(min-width:1024px){
+  #trabajosApp{padding-left:240px;}
+  #trabajosApp header{position:static;background:transparent;border-bottom:none;box-shadow:none;padding:26px 34px 8px;}
+  #trabajosApp .header-top .logo{display:none;}
+  #trabajosApp .header-top{justify-content:flex-end;}
+  #trabajosApp .tabs{position:fixed;left:0;top:0;bottom:0;width:240px;flex-direction:column;background:var(--surface);border-right:1px solid var(--border);border-bottom:none;padding:84px 12px 20px;gap:4px;z-index:120;overflow-y:auto;}
+  #trabajosApp .tab{flex:0 0 auto;text-align:left;font-size:12px;padding:12px 16px;border-radius:10px;border-bottom:2px solid transparent;letter-spacing:.4px;}
+  #trabajosApp .tab.active{background:rgba(59,130,246,.14);color:var(--accent2);border-bottom-color:transparent;}
+  #trabajosApp .tab:hover{background:rgba(255,255,255,.05);}
+  #tabMas{display:none!important;}
+  #sidebarLogo{display:block!important;position:fixed;left:0;top:0;width:240px;padding:24px;font-size:17px;font-weight:800;color:var(--text);z-index:121;background:var(--surface);border-right:1px solid var(--border);box-sizing:border-box;}
+  #sidebarLogo span{color:var(--accent2);}
+  /* stats como tarjetas de dashboard */
+  #trabajosApp .stats-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:18px;max-width:1100px;}
+  #trabajosApp .stat{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 22px;gap:6px;}
+  #trabajosApp .stat-val{font-size:30px;}
+  #trabajosApp .stat-lbl{font-size:10px;}
+  #trabajosApp .stat-div{display:none;}
+  /* contenido con ancho legible */
+  #trabajosApp .controls{max-width:1100px;padding-left:34px;padding-right:34px;}
+  #trabajosApp .list{max-width:1100px;padding-left:34px;padding-right:34px;}
+  #trabajosApp header > div:not(.header-top){max-width:1100px;}
+  /* modales centrados en escritorio */
+  .modal{align-items:center;justify-content:center;}
+  .modal-sheet{border-radius:20px;max-width:560px;border:1px solid var(--border);}
+}
 </style>
 </head>
 <body>
@@ -479,6 +507,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     </div>
   </header>
 
+  <div id="sidebarLogo" style="display:none">Climas <span>Greco</span> 🔧</div>
   <div class="tabs">
     <div class="tab active" id="tabSemana" onclick="switchTrabTab('semana')">📅 SEMANA</div>
     <div class="tab" id="tabCorte" onclick="switchTrabTab('corte')">💰 CORTE</div>
@@ -3582,6 +3611,25 @@ async function ajustarCableTecnico(tecnico,delta){
 }
 
 // ── TABS TRABAJOS ──
+// En escritorio, Deben y Tarifas pasan del menú "Más" al menú lateral
+function ajustarLayoutTrabajos(){
+  const wide=window.innerWidth>=1024;
+  const tabs=document.querySelector('#trabajosApp .tabs');
+  const tabMas=document.getElementById('tabMas');
+  const menu=document.getElementById('masMenu');
+  const pend=document.getElementById('tabPend');
+  const tar=document.getElementById('tabTarifas');
+  if(!tabs||!pend||!tar||!tabMas)return;
+  if(wide){
+    if(pend.parentElement!==tabs){tabs.insertBefore(pend,tabMas);tabs.insertBefore(tar,tabMas);}
+    if(menu)menu.style.display='none';
+  }else{
+    if(pend.parentElement===tabs&&menu){menu.appendChild(pend);menu.appendChild(tar);}
+  }
+}
+window.addEventListener('resize',ajustarLayoutTrabajos);
+document.addEventListener('DOMContentLoaded',ajustarLayoutTrabajos);
+
 function toggleMasMenu(e){
   if(e)e.stopPropagation();
   const m=document.getElementById('masMenu');
