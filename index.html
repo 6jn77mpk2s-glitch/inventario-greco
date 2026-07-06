@@ -514,6 +514,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="tab" id="tabPagos" onclick="switchTrabTab('pagos')">💵 PAGOS</div>
     <div class="tab" id="tabCaja" onclick="switchTrabTab('caja')">🏦 CAJA</div>
     <div class="tab" id="tabCuadrillas" onclick="switchTrabTab('cuadrillas')">👷 CUADRILLAS</div>
+    <div class="tab" id="tabResumen" onclick="switchTrabTab('resumen')">📊 RESUMEN</div>
     <div class="tab" id="tabMas" onclick="toggleMasMenu(event)">☰ MÁS</div>
   </div>
   <!-- Menú desplegable "Más" -->
@@ -564,6 +565,16 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="loadCaja()" style="margin-left:auto">↻</button>
     </div>
     <div class="list" id="listCaja"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+
+  <!-- RESUMEN (dashboard admin) -->
+  <div id="secResumen" style="display:none">
+    <div id="resumenFiltro" style="display:flex;gap:6px;flex-wrap:wrap;padding:12px 14px 4px"></div>
+    <div id="resumenPeriodo" style="display:flex;gap:6px;padding:6px 14px 10px;align-items:center">
+      <span style="font-size:11px;color:var(--muted);margin-right:4px">Período:</span>
+    </div>
+    <div id="resumenCards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:0 14px 12px"></div>
+    <div id="resumenGraficas" style="padding:0 14px 24px"></div>
   </div>
 
   <!-- CUADRILLAS (vista admin de lo que hace cada cuadrilla + autorizaciones) -->
@@ -2862,8 +2873,18 @@ function semanaIdDeFecha(fecha){
 function nombreMes(m){return ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][m];}
 
 // ── INIT ──
+function actualizarVisibilidadResumen(){
+  const tab=document.getElementById('tabResumen');
+  if(!tab)return;
+  const esAdmin=(currentUser==='Eduardo'&&!viendoComo);
+  tab.style.display=esAdmin?'':'none';
+  // si estaba en resumen y deja de ser admin, mandarlo a semana
+  if(!esAdmin&&document.getElementById('secResumen').style.display==='block'){switchTrabTab('semana');}
+}
+
 async function initTrabajos(){
   document.getElementById('trabUserPill').textContent='👤 '+currentUser;
+  actualizarVisibilidadResumen();
   await loadTarifas(true); // silencioso, solo carga datos
   await loadTrabajos();
 }
@@ -3663,6 +3684,7 @@ function switchTrabTab(t){
   document.getElementById('secPagos').style.display=t==='pagos'?'block':'none';
   document.getElementById('secCaja').style.display=t==='caja'?'block':'none';
   document.getElementById('secCuadrillas').style.display=t==='cuadrillas'?'block':'none';
+  document.getElementById('secResumen').style.display=t==='resumen'?'block':'none';
   document.getElementById('secPend').style.display=t==='pendientes'?'block':'none';
   document.getElementById('secTarifas').style.display=t==='tarifas'?'block':'none';
   document.getElementById('tabSemana').className='tab'+(t==='semana'?' active':'');
@@ -3670,6 +3692,7 @@ function switchTrabTab(t){
   document.getElementById('tabPagos').className='tab'+(t==='pagos'?' active':'');
   document.getElementById('tabCaja').className='tab'+(t==='caja'?' active':'');
   document.getElementById('tabCuadrillas').className='tab'+(t==='cuadrillas'?' active':'');
+  document.getElementById('tabResumen').className='tab'+(t==='resumen'?' active':'');
   document.getElementById('tabMas').className='tab'+((t==='pendientes'||t==='tarifas')?' active':'');
   document.getElementById('tabPend').className='tab'+(t==='pendientes'?' active':'');
   document.getElementById('tabTarifas').className='tab'+(t==='tarifas'?' active':'');
@@ -3677,6 +3700,7 @@ function switchTrabTab(t){
   if(t==='pagos')initPagos();
   if(t==='caja')loadCaja();
   if(t==='cuadrillas')loadCuadrillas();
+  if(t==='resumen')loadResumen();
   if(t==='pendientes')loadPendientes();
   if(t==='tarifas')loadTarifas();
 }
@@ -3942,6 +3966,176 @@ let cajaPendPagados=[]; // pendientes (DEBEN) ya cobrados
 let transfPendientes=[]; // transferencias por asignar a una cuenta
 let cortesEntregados=[]; // cortes de efectivo ya entregados
 
+// ════════ RESUMEN / DASHBOARD (solo admin Eduardo) ════════
+let resumenFiltroCuad='__todas__';
+let resumenSemanas=4;
+let resumenDataCache=null;
+
+const RESUMEN_CUADRILLAS=['Alan','Eduardo','Henry','David','Alejandro'];
+
+async function loadResumen(){
+  // pintar controles
+  renderResumenFiltro();
+  renderResumenPeriodo();
+  const cont=document.getElementById('resumenGraficas');
+  cont.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    // Traer TODOS los trabajos y salidas (el resumen es del negocio completo)
+    const [trabsAll,salidasAll]=await Promise.all([
+      api('trabajos?select=*'),
+      api('caja_salidas?select=*')
+    ]);
+    resumenDataCache={trabs:trabsAll,salidas:salidasAll};
+    renderResumen();
+  }catch(e){
+    cont.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
+  }
+}
+
+function renderResumenFiltro(){
+  const cont=document.getElementById('resumenFiltro');
+  cont.innerHTML='';
+  const opciones=[{k:'__todas__',lbl:'Todas'}].concat(RESUMEN_CUADRILLAS.map(x=>({k:x,lbl:x})));
+  opciones.forEach(o=>{
+    const b=document.createElement('button');
+    const activo=resumenFiltroCuad===o.k;
+    b.className='btn '+(activo?'btn-primary':'btn-ghost');
+    b.textContent=o.lbl;b.style.cssText='font-size:12px;padding:6px 12px';
+    b.onclick=()=>{resumenFiltroCuad=o.k;renderResumenFiltro();renderResumen();};
+    cont.appendChild(b);
+  });
+}
+
+function renderResumenPeriodo(){
+  const cont=document.getElementById('resumenPeriodo');
+  // limpiar botones anteriores (dejar la etiqueta)
+  cont.querySelectorAll('button').forEach(b=>b.remove());
+  [4,8,12].forEach(n=>{
+    const b=document.createElement('button');
+    const activo=resumenSemanas===n;
+    b.className='btn '+(activo?'btn-primary':'btn-ghost');
+    b.textContent=n+' sem';b.style.cssText='font-size:12px;padding:5px 12px';
+    b.onclick=()=>{resumenSemanas=n;renderResumenPeriodo();renderResumen();};
+    cont.appendChild(b);
+  });
+}
+
+// filtra trabajos por cuadrilla seleccionada
+function resumenTrabsFiltrados(){
+  if(!resumenDataCache)return [];
+  let t=resumenDataCache.trabs;
+  if(resumenFiltroCuad!=='__todas__')t=t.filter(x=>x.cuadrilla===resumenFiltroCuad);
+  return t;
+}
+
+// utilidad de un conjunto de trabajos + salidas para un rango de semanas
+function calcUtilidad(trabs,salidas,incluirSalidas){
+  let cobrado=0,pagos=0,sal=0;
+  trabs.forEach(t=>{
+    cobrado+=parseFloat(t.cobrado||t.total)||0;
+    pagos+=(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0)+(parseFloat(t.pago_atrasado)||0);
+  });
+  if(incluirSalidas&&salidas){
+    salidas.forEach(s=>{ if(s.tipo!=='entrada')sal+=(parseFloat(s.monto)||0); });
+  }
+  return {cobrado,pagos,salidas:sal,utilidad:cobrado-pagos-sal};
+}
+
+function renderResumen(){
+  if(!resumenDataCache)return;
+  const indiv=(resumenFiltroCuad!=='__todas__');
+  const trabs=resumenTrabsFiltrados();
+  // Semanas del período (de la más antigua a la actual)
+  const semanas=[];
+  for(let i=resumenSemanas-1;i>=0;i--){ semanas.push(semanaId(-i)); }
+  // Trabajos dentro del período
+  const trabsPeriodo=trabs.filter(t=>semanas.includes(t.semana));
+  // Salidas dentro del período (solo si es vista "todas")
+  const salPeriodo=(!indiv)?resumenDataCache.salidas.filter(s=>semanas.includes(s.semana)):[];
+
+  // ── Tarjetas de números ──
+  const u=calcUtilidad(trabsPeriodo,salPeriodo,!indiv);
+  const nTrab=trabsPeriodo.length;
+  const prom=nTrab?Math.round(u.cobrado/nTrab):0;
+  const cards=document.getElementById('resumenCards');
+  cards.innerHTML='';
+  const tarjetas=[
+    {lbl:'Cobrado ('+resumenSemanas+' sem)',val:'$'+u.cobrado.toLocaleString(),col:'var(--green)'},
+    {lbl:indiv?'Utilidad cuadrilla':'Utilidad operativa',val:'$'+u.utilidad.toLocaleString(),col:'var(--accent2)'},
+    {lbl:'Trabajos',val:nTrab,col:'var(--text)'},
+    {lbl:'Promedio x trabajo',val:'$'+prom.toLocaleString(),col:'var(--orange)'}
+  ];
+  tarjetas.forEach(t=>{
+    const d=document.createElement('div');
+    d.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px';
+    d.innerHTML='<div style="font-family:var(--mono);font-size:22px;font-weight:600;color:'+t.col+'">'+t.val+'</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:3px">'+t.lbl+'</div>';
+    cards.appendChild(d);
+  });
+
+  // ── Gráficas ──
+  const cont=document.getElementById('resumenGraficas');
+  cont.innerHTML='';
+
+  // 1) Cobrado por día (semana actual seleccionada con flechas)
+  const sidActual=semanaId(semanaOffset);
+  const dias=['Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const lunes=lunesDeSemana(semanaOffset);
+  const cobradoDia=[0,0,0,0,0,0];
+  trabs.filter(t=>t.semana===sidActual).forEach(t=>{
+    const f=new Date((t.fecha||'')+'T12:00:00');
+    let idx=(f.getDay()+6)%7; if(idx>=0&&idx<6)cobradoDia[idx]+=parseFloat(t.cobrado||t.total)||0;
+  });
+  cont.appendChild(graficaBarras('💵 Cobrado por día (semana actual)',dias,cobradoDia,'var(--green)'));
+
+  // 2) Utilidad por semana (período)
+  const utilSem=semanas.map(sid=>{
+    const ts=trabs.filter(t=>t.semana===sid);
+    const ss=(!indiv)?resumenDataCache.salidas.filter(s=>s.semana===sid):[];
+    return calcUtilidad(ts,ss,!indiv).utilidad;
+  });
+  const etiquetasSem=semanas.map(sid=>{const d=new Date(sid+'T12:00:00');return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');});
+  cont.appendChild(graficaBarras('📈 Utilidad por semana'+(indiv?' (cuadrilla)':' operativa (sin costo de equipo)'),etiquetasSem,utilSem,'var(--accent2)'));
+
+  // 3) Trabajos por cuadrilla (se oculta si es vista individual)
+  if(!indiv){
+    const conteo=RESUMEN_CUADRILLAS.map(cu=>trabsPeriodo.filter(t=>t.cuadrilla===cu).length);
+    cont.appendChild(graficaBarras('👷 Trabajos por cuadrilla ('+resumenSemanas+' sem)',RESUMEN_CUADRILLAS,conteo,'var(--orange)'));
+  }
+}
+
+// Dibuja una gráfica de barras a mano (SVG), responsiva
+function graficaBarras(titulo,labels,valores,color){
+  const wrap=document.createElement('div');
+  wrap.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px';
+  const h=document.createElement('div');h.style.cssText='font-size:13px;font-weight:700;margin-bottom:14px';h.textContent=titulo;
+  wrap.appendChild(h);
+  const max=Math.max(1,...valores.map(v=>Math.abs(v)));
+  const n=valores.length;
+  const W=Math.max(300,n*54), H=180, padB=26, padT=10;
+  const bw=Math.min(38,(W/n)*0.6);
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;overflow:visible">';
+  // línea base
+  const baseY=H-padB;
+  svg+='<line x1="0" y1="'+baseY+'" x2="'+W+'" y2="'+baseY+'" stroke="var(--border)" stroke-width="1"/>';
+  valores.forEach((v,i)=>{
+    const x=(i+0.5)*(W/n);
+    const bh=(Math.abs(v)/max)*(H-padB-padT);
+    const y=baseY-bh;
+    const neg=v<0;
+    svg+='<rect x="'+(x-bw/2)+'" y="'+(neg?baseY:y)+'" width="'+bw+'" height="'+Math.max(1,bh)+'" rx="4" fill="'+(neg?'var(--red)':color)+'" opacity="'+(v===0?0.25:0.92)+'"/>';
+    // valor arriba
+    if(v!==0){
+      const val=Math.abs(v)>=1000?('$'+Math.round(v/1000)+'k'):(''+Math.round(v));
+      svg+='<text x="'+x+'" y="'+(y-4)+'" text-anchor="middle" font-size="10" fill="var(--muted)">'+val+'</text>';
+    }
+    // etiqueta
+    svg+='<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" fill="var(--muted)">'+labels[i]+'</text>';
+  });
+  svg+='</svg>';
+  wrap.innerHTML+=svg;
+  return wrap;
+}
+
 // ════════ REPONER MATERIAL AL ESTÁNDAR (por cuadrilla) ════════
 let repoTecnicoActual=null;
 async function abrirRepoEstandar(tecnico){
@@ -4115,6 +4309,7 @@ function entrarVerComo(nombre){
   document.getElementById('viendoComoNombre').textContent=nombre;
   document.getElementById('viendoComoBanner').style.display='flex';
   document.getElementById('trabUserPill').textContent='👤 '+nombre;
+  actualizarVisibilidadResumen();
   // recargar la pestaña actual con los datos del técnico; mandar a SEMANA
   switchTrabTab('semana');
   loadTrabajos();
@@ -4126,6 +4321,7 @@ function salirVerComo(){
   viendoComo=null;
   document.getElementById('viendoComoBanner').style.display='none';
   document.getElementById('trabUserPill').textContent='👤 '+(currentUser||'—');
+  actualizarVisibilidadResumen();
   switchTrabTab('cuadrillas');
   loadTrabajos();
   showToast('De vuelta en tu cuenta');
