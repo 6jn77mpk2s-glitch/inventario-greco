@@ -3193,7 +3193,17 @@ function openTrabajoModal(){
   recalcTrabajo();
   document.getElementById('modalTrabajo').classList.add('open');
 }
-function closeTrabModal(){document.getElementById('modalTrabajo').classList.remove('open');}
+function closeTrabModal(){
+  document.getElementById('modalTrabajo').classList.remove('open');
+  // limpiar TODO el estado de captura para que un cancelar no deje nada a medias
+  editandoTrabajoId=null;
+  modoTecnicoCaptura=false;
+  tecCapturaUid=null;
+  desgloseItems=[];
+  pagosItems=[];
+  guardandoTrabajo=false;
+  try{aplicarModoTecnicoUI(false);document.getElementById('trabCuadrilla').disabled=false;}catch(e){}
+}
 function closeTrabModalBg(e){if(e.target===document.getElementById('modalTrabajo'))closeTrabModal();}
 
 // ── FORMAS DE PAGO DIVIDIDAS ──
@@ -3486,7 +3496,9 @@ function recalcTrabajo(){
   return {subtotal,iva,total};
 }
 
+let guardandoTrabajo=false; // evita doble guardado (doble tap / doble submit)
 async function guardarTrabajo(){
+  if(guardandoTrabajo)return; // ya se está guardando, ignorar segundo intento
   const fecha=document.getElementById('trabFecha').value;
   if(!fecha){alert('Selecciona la fecha');return;}
   const cuadrilla=document.getElementById('trabCuadrilla').value;
@@ -3546,6 +3558,7 @@ async function guardarTrabajo(){
     nota,usuario:modoTecnicoCaptura?tecnicoActual:(currentUser||''),
     agenda_uid:modoTecnicoCaptura?(tecCapturaUid||''):''
   };
+  guardandoTrabajo=true; // bloquear doble guardado desde aquí
   try{
     if(editandoTrabajoId){
       // EDITAR: no cambiar el dueño; marcar quién editó y cuándo (transparencia)
@@ -3595,6 +3608,7 @@ async function guardarTrabajo(){
       else{showToast('Guardado en otra semana');}
     }
   }catch(e){showToast('Error al guardar',true);}
+  guardandoTrabajo=false; // liberar siempre al terminar
 }
 
 // Ajusta el saldo de cable del técnico (delta puede ser negativo)
@@ -4252,6 +4266,20 @@ async function revertirTransferencia(id){
   }catch(e){showToast('Error',true);}
 }
 
+// Elimina una transferencia PENDIENTE (duplicada o por error). Pide confirmación. No toca el trabajo.
+async function eliminarTransferenciaPendiente(tr){
+  const ok=await uiConfirm('¿Eliminar esta transferencia por asignar?',{
+    sub:'👷 '+(tr.tecnico||'')+' · $'+(parseFloat(tr.monto)||0).toLocaleString()+' — solo quita este registro, no borra el trabajo',
+    ok:'🗑 Eliminar'
+  });
+  if(!ok)return;
+  try{
+    await api('transferencias?id=eq.'+tr.id,{method:'DELETE'});
+    showToast('Transferencia eliminada ✓');
+    loadCaja();
+  }catch(e){showToast('Error al eliminar',true);}
+}
+
 async function asignarTransferencia(tr,cuenta){
   if(!await uiConfirm('¿Confirmar que esta transferencia cayó en la cuenta de '+cuenta+'?',{sub:'$'+(parseFloat(tr.monto)||0).toLocaleString()+' · se sumará a su banco',ok:'✓ Confirmar'}))return;
   try{
@@ -4356,9 +4384,11 @@ function renderCaja(){
       const d=new Date((tr.fecha||'')+'T12:00:00');const fch=isNaN(d)?'':(String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'));
       card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div style="flex:1"><div style="font-size:13px;font-weight:600">👷 '+esc(tr.tecnico||'?')+' · '+esc(tr.concepto||'Trabajo')+'</div><div style="font-size:10px;color:var(--muted)">'+fch+'</div></div><div style="font-family:var(--mono);font-size:16px;color:var(--accent2)">$'+(parseFloat(tr.monto)||0).toLocaleString()+'</div></div>';
       const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;margin-top:8px';
-      const bOk=document.createElement('button');bOk.className='btn btn-success';bOk.textContent='✓ Cayó en cuenta de Eduardo';bOk.style.cssText='flex:1;font-size:12px;padding:7px';
+      const bOk=document.createElement('button');bOk.className='btn btn-success';bOk.textContent='✓ Cayó en cuenta de Eduardo';bOk.style.cssText='flex:2;font-size:12px;padding:7px';
       bOk.onclick=()=>asignarTransferencia(tr,'Eduardo');
-      acts.appendChild(bOk);card.appendChild(acts);
+      const bDel=document.createElement('button');bDel.className='btn btn-cancel';bDel.textContent='🗑';bDel.style.cssText='flex:0 0 auto;font-size:13px;padding:7px 12px';
+      bDel.onclick=()=>eliminarTransferenciaPendiente(tr);
+      acts.appendChild(bOk);acts.appendChild(bDel);card.appendChild(acts);
       grp.appendChild(card);
     });
     list.appendChild(grp);
