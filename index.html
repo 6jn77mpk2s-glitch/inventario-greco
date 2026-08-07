@@ -349,6 +349,49 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   </div>
 </div>
 
+<!-- ════════ PANTALLA SUPERVISOR ════════ -->
+<div id="supervisorApp" style="display:none;min-height:100vh;background:var(--bg)">
+  <header>
+    <div class="header-top">
+      <div class="logo">Climas <span>Greco</span></div>
+      <div class="branch-pill sur" onclick="salirSupervisor()" style="cursor:pointer">SALIR ↩</div>
+    </div>
+    <div id="supBienvenida" style="padding:10px 4px 4px;font-size:17px;font-weight:700">Supervisor</div>
+    <div class="tabs" id="supTabs" style="margin-top:6px">
+      <div class="tab active" id="supTabSemana" onclick="switchSupTab('semana')">📅 SEMANA</div>
+      <div class="tab" id="supTabPagos" onclick="switchSupTab('pagos')">💵 PAGOS</div>
+      <div class="tab" id="supTabCorte" onclick="switchSupTab('corte')">💰 CORTE</div>
+      <div class="tab" id="supTabMaterial" onclick="switchSupTab('material')">📦 MATERIAL</div>
+    </div>
+  </header>
+
+  <!-- SEMANA -->
+  <div id="supSecSemana" style="padding:12px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <button class="btn btn-ghost" onclick="supSemanaOffset--;loadSupSemana()" style="padding:6px 12px">←</button>
+      <div id="supSemanaLbl" style="flex:1;text-align:center;font-size:13px;color:var(--muted)"></div>
+      <button class="btn btn-ghost" onclick="supSemanaOffset++;loadSupSemana()" style="padding:6px 12px">→</button>
+    </div>
+    <div id="supResumenCards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px"></div>
+    <div id="supListSemana"></div>
+  </div>
+
+  <!-- PAGOS -->
+  <div id="supSecPagos" style="display:none;padding:12px">
+    <div id="supListPagos"></div>
+  </div>
+
+  <!-- CORTE -->
+  <div id="supSecCorte" style="display:none;padding:12px">
+    <div id="supListCorte"></div>
+  </div>
+
+  <!-- MATERIAL -->
+  <div id="supSecMaterial" style="display:none;padding:12px">
+    <div id="supListMaterial"></div>
+  </div>
+</div>
+
 <!-- ════════ PANTALLA TÉCNICO (acceso limitado) ════════ -->
 <div id="tecnicoApp" style="display:none;min-height:100vh;background:var(--bg)">
   <header>
@@ -1017,6 +1060,9 @@ const URL_SB='https://mvenmzrfkmyfftwswxtq.supabase.co';
 const KEY_SB='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZW5tenJma215ZmZ0d3N3eHRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTYxMTUsImV4cCI6MjA5MjUzMjExNX0.Rged1qWORiY2l7wLL9rM-aRvEnwJa58BVBdYvLI4qyw';
 const PIN='18';
 // Contraseñas de técnicos (acceso limitado solo a sus trabajos del día)
+// Contraseñas de supervisores (acceso a pantalla de supervisor)
+const SUPERVISOR_PASSWORDS={'1001':'Alan','1002':'Eduardo'};
+
 // ── CUADRILLAS (configuración dinámica, respaldada en la tabla 'cuadrillas') ──
 // Semilla por defecto (se usa si la tabla está vacía o no carga). grupo: 'alan_eduardo' | 'henry_david'
 const CUADRILLAS_SEED=[
@@ -1186,6 +1232,208 @@ function showToast(msg,err=false){
 // ── PIN ──
 const PIN_TRABAJOS='5122';
 let currentModule=null; // 'inventarios' | 'trabajos'
+
+// ════════ MODO SUPERVISOR ════════
+let supervisorActual=null;
+let supSemanaOffset=0;
+let supTrabajos=[];
+
+async function entrarComoSupervisor(nombre){
+  supervisorActual=nombre;
+  document.getElementById('pinScreen').style.display='none';
+  document.getElementById('moduleScreen').classList.remove('show');
+  document.getElementById('supervisorApp').style.display='block';
+  document.getElementById('supBienvenida').textContent='👔 Bienvenido, '+nombre;
+  switchSupTab('semana');
+  await loadSupSemana();
+}
+
+function salirSupervisor(){
+  supervisorActual=null;
+  document.getElementById('supervisorApp').style.display='none';
+  document.getElementById('pinScreen').style.display='flex';
+  document.getElementById('pinInput').value='';
+}
+
+function switchSupTab(t){
+  ['semana','pagos','corte','material'].forEach(s=>{
+    document.getElementById('supSec'+s.charAt(0).toUpperCase()+s.slice(1)).style.display=t===s?'block':'none';
+    document.getElementById('supTab'+s.charAt(0).toUpperCase()+s.slice(1)).className='tab'+(t===s?' active':'');
+  });
+  if(t==='pagos')renderSupPagos();
+  if(t==='corte')renderSupCorte();
+  if(t==='material')loadSupMaterial();
+}
+
+async function loadSupSemana(){
+  const lunes=new Date();lunes.setHours(0,0,0,0);
+  const day=(lunes.getDay()+6)%7;lunes.setDate(lunes.getDate()-day+supSemanaOffset*7);
+  const sabado=new Date(lunes);sabado.setDate(lunes.getDate()+5);
+  const sid=fmtFecha(lunes);
+  document.getElementById('supSemanaLbl').textContent=fmtFechaCorta2(lunes)+' — '+fmtFechaCorta2(sabado);
+  // Cargar TODOS los trabajos de esa semana donde este supervisor fue seleccionado
+  try{
+    const todos=await api('trabajos?select=*&semana=eq.'+sid);
+    supTrabajos=todos.filter(t=>t.supervisor===supervisorActual);
+    renderSupSemana();
+  }catch(e){document.getElementById('supListSemana').innerHTML='<div class="loading" style="color:var(--red)">Error al cargar</div>';}
+}
+
+function fmtFechaCorta2(d){return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');}
+
+function renderSupSemana(){
+  // Tarjetas resumen
+  const cobrado=supTrabajos.reduce((s,t)=>s+(parseFloat(t.cobrado||t.total)||0),0);
+  const pagos=supTrabajos.reduce((s,t)=>s+(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0)+(parseFloat(t.pago_supervisor)||0),0);
+  const comSup=supTrabajos.reduce((s,t)=>s+(parseFloat(t.pago_supervisor)||0),0);
+  const cards=document.getElementById('supResumenCards');
+  cards.innerHTML='';
+  [{lbl:'Cobrado',val:'$'+cobrado.toLocaleString(),col:'var(--green)'},
+   {lbl:'Pagos totales',val:'$'+pagos.toLocaleString(),col:'var(--orange)'},
+   {lbl:'Mi comisión',val:'$'+comSup.toLocaleString(),col:'#c084fc'},
+   {lbl:'Trabajos',val:supTrabajos.length,col:'var(--accent2)'}
+  ].forEach(c=>{
+    const d=document.createElement('div');
+    d.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px';
+    d.innerHTML='<div style="font-family:var(--mono);font-size:20px;font-weight:700;color:'+c.col+'">'+c.val+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+c.lbl+'</div>';
+    cards.appendChild(d);
+  });
+
+  // Lista de trabajos agrupados por día
+  const list=document.getElementById('supListSemana');
+  list.innerHTML='';
+  if(!supTrabajos.length){list.innerHTML='<div class="empty">Sin trabajos como supervisor esta semana.</div>';return;}
+  const porDia={};
+  supTrabajos.forEach(t=>{(porDia[t.fecha]=porDia[t.fecha]||[]).push(t);});
+  Object.keys(porDia).sort().forEach(fecha=>{
+    const d=new Date(fecha+'T12:00:00');
+    const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    const grp=document.createElement('div');grp.className='marca-group';
+    const h=document.createElement('div');h.className='marca-header';h.style.color='var(--accent2)';
+    const tot=porDia[fecha].reduce((s,t)=>s+(parseFloat(t.cobrado||t.total)||0),0);
+    h.textContent=dias[d.getDay()]+' '+fmtFechaCorta2(d)+' · $'+tot.toLocaleString();
+    grp.appendChild(h);
+    porDia[fecha].forEach(t=>{
+      let desg=[];try{desg=JSON.parse(t.desglose||'[]');}catch(e){}
+      const resumen=desg.map(x=>x.nombre).join(' · ')||'Sin desglose';
+      const card=document.createElement('div');card.className='item';card.style.cssText='padding:10px 14px';
+      card.innerHTML='<div style="font-size:13px;font-weight:600">👷 '+esc(t.cuadrilla||'')+(t.ayudante?' + '+esc(t.ayudante):'')+'</div>'+
+        '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+esc(resumen)+'</div>'+
+        '<div style="display:flex;justify-content:space-between;margin-top:6px"><span style="font-family:var(--mono);font-size:13px;color:var(--green)">$'+(parseFloat(t.cobrado||t.total)||0).toLocaleString()+'</span><span style="font-size:11px;color:#c084fc">Sup $'+(parseFloat(t.pago_supervisor)||0).toLocaleString()+'</span></div>';
+      grp.appendChild(card);
+    });
+    list.appendChild(grp);
+  });
+}
+
+function renderSupPagos(){
+  const list=document.getElementById('supListPagos');
+  list.innerHTML='';
+  if(!supTrabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.</div>';return;}
+  // Agrupar pagos por cuadrilla
+  const porCuad={};
+  supTrabajos.forEach(t=>{
+    const cu=t.cuadrilla||'?';
+    if(!porCuad[cu])porCuad[cu]={tec:0,ayu:0,sup:0,trabajos:0};
+    porCuad[cu].tec+=parseFloat(t.pago_tecnico)||0;
+    porCuad[cu].ayu+=parseFloat(t.pago_ayudante)||0;
+    porCuad[cu].sup+=parseFloat(t.pago_supervisor)||0;
+    porCuad[cu].trabajos++;
+  });
+  const totSup=supTrabajos.reduce((s,t)=>s+(parseFloat(t.pago_supervisor)||0),0);
+  // Mi comisión total arriba
+  const head=document.createElement('div');head.className='item';head.style.cssText='padding:14px;margin-bottom:10px;border-left:3px solid #c084fc';
+  head.innerHTML='<div style="font-size:12px;color:var(--muted)">Mi comisión total esta semana</div><div style="font-family:var(--mono);font-size:22px;font-weight:700;color:#c084fc">$'+totSup.toLocaleString()+'</div>';
+  list.appendChild(head);
+  // Por cuadrilla
+  Object.keys(porCuad).forEach(cu=>{
+    const d=porCuad[cu];
+    const grp=document.createElement('div');grp.className='marca-group';
+    const h=document.createElement('div');h.className='marca-header';h.style.color='var(--accent2)';h.textContent='👷 '+cu+' ('+d.trabajos+' trabajo'+(d.trabajos!==1?'s':'')+')';
+    grp.appendChild(h);
+    [[('Técnico '+cu),d.tec,'var(--green)'],[('Ayudante'),d.ayu,'var(--accent2)'],[('Mi comisión'),d.sup,'#c084fc']].forEach(([lbl,val,col])=>{
+      if(!val)return;
+      const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:8px 10px;background:var(--card);border-radius:8px;margin-bottom:4px';
+      row.innerHTML='<span style="font-size:13px">'+esc(lbl)+'</span><span style="font-family:var(--mono);color:'+col+'">$'+val.toLocaleString()+'</span>';
+      grp.appendChild(row);
+    });
+    list.appendChild(grp);
+  });
+}
+
+function renderSupCorte(){
+  const list=document.getElementById('supListCorte');
+  list.innerHTML='';
+  if(!supTrabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.</div>';return;}
+  const cobrado=supTrabajos.reduce((s,t)=>s+(parseFloat(t.cobrado||t.total)||0),0);
+  const pagos=supTrabajos.reduce((s,t)=>s+(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0)+(parseFloat(t.pago_supervisor)||0),0);
+  const utilidad=cobrado-pagos;
+  const porForma={};
+  supTrabajos.forEach(t=>{
+    let ps=[];try{ps=JSON.parse(t.pagos||'[]');}catch(e){}
+    if(ps.length){ps.forEach(p=>{const f=p.forma||'efectivo';porForma[f]=(porForma[f]||0)+(parseFloat(p.monto)||0);});}
+    else{const f=t.forma_pago||'efectivo';porForma[f]=(porForma[f]||0)+(parseFloat(t.cobrado||t.total)||0);}
+  });
+  const fmtForma={efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',tarjeta:'💳 Tarjeta',local:'🏪 Local'};
+  [{lbl:'Cobrado total',val:cobrado,col:'var(--green)'},{lbl:'Pagos (tec+ayu+sup)',val:pagos,col:'var(--orange)'},{lbl:'Utilidad operativa',val:utilidad,col:'var(--accent2)'}].forEach(r=>{
+    const row=document.createElement('div');row.className='item';row.style.cssText='padding:12px 14px;margin-bottom:6px';
+    row.innerHTML='<div style="display:flex;justify-content:space-between"><span style="font-size:13px;font-weight:700">'+r.lbl+'</span><span style="font-family:var(--mono);font-size:18px;font-weight:700;color:'+r.col+'">$'+r.val.toLocaleString()+'</span></div>';
+    list.appendChild(row);
+  });
+  // Por forma de cobro
+  const grp=document.createElement('div');grp.className='marca-group';
+  const h=document.createElement('div');h.className='marca-header';h.style.color='var(--muted)';h.textContent='CÓMO SE COBRÓ';grp.appendChild(h);
+  Object.keys(porForma).forEach(f=>{
+    const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:8px 10px;background:var(--card);border-radius:8px;margin-bottom:4px';
+    row.innerHTML='<span style="font-size:13px">'+(fmtForma[f]||f)+'</span><span style="font-family:var(--mono);color:var(--green)">$'+(porForma[f]||0).toLocaleString()+'</span>';
+    grp.appendChild(row);
+  });
+  list.appendChild(grp);
+}
+
+async function loadSupMaterial(){
+  const list=document.getElementById('supListMaterial');
+  list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try{
+    await cargarCuadrillas();
+    await cargarEstandar();
+    // cuadrillas que este supervisor ha supervisado esta semana
+    const cuads=[...new Set(supTrabajos.map(t=>t.cuadrilla).filter(Boolean))];
+    if(!cuads.length){list.innerHTML='<div class="empty">Sin cuadrillas esta semana.</div>';return;}
+    list.innerHTML='';
+    for(const nombre of cuads){
+      const saldos=await api('material_tecnicos?select=*&tecnico=eq.'+encodeURIComponent(nombre));
+      const cab=await api('cable_tecnicos?select=*&tecnico=eq.'+encodeURIComponent(nombre));
+      const cabM=parseFloat(cab[0]?cab[0].metros:0)||0;
+      const grp=document.createElement('div');grp.className='marca-group';
+      const h=document.createElement('div');h.className='marca-header';h.style.color='var(--accent2)';h.textContent='👷 '+nombre;grp.appendChild(h);
+      const saldoDe=(mat)=>{const r=saldos.find(x=>x.material===mat);return r?(parseFloat(r.cantidad)||0):0;};
+      Object.keys(ESTANDAR_MATERIAL).forEach(mat=>{
+        const std=ESTANDAR_MATERIAL[mat];const trae=saldoDe(mat);const falta=Math.max(0,std-trae);
+        const row=document.createElement('div');row.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:6px';
+        row.innerHTML='<div style="flex:1"><div style="font-size:12px;font-weight:600">'+esc(mat)+'</div><div style="font-size:11px;color:var(--muted)">Trae <b style="color:'+(trae<=2?'var(--red)':'var(--text)')+'">'+trae+'</b> de '+std+(falta>0?' · faltan <b style="color:var(--orange)">'+falta+'</b>':' ✓')+'</div></div>';
+        if(falta>0){
+          const b=document.createElement('button');b.className='btn btn-success';b.textContent='Reponer '+falta;b.style.cssText='font-size:11px;padding:6px 10px';
+          b.onclick=async()=>{
+            const suc=await uiChoose('Sucursal origen',['sur','centro','soriana'].map(s=>({label:s.toUpperCase(),value:s})));
+            if(!suc)return;
+            await ajustarMaterialTecnico(nombre,mat,falta);
+            const f2=await api('materiales?select=*&sucursal=eq.'+suc+'&nombre=eq.'+encodeURIComponent(mat));
+            if(f2.length)await api('materiales?id=eq.'+f2[0].id,{method:'PATCH',body:JSON.stringify({qty:Math.max(0,(parseInt(f2[0].qty)||0)-falta)})});
+            showToast('Repuesto ✓');loadSupMaterial();
+          };
+          row.appendChild(b);
+        }
+        grp.appendChild(row);
+      });
+      // Cable
+      const cabRow=document.createElement('div');cabRow.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between';
+      cabRow.innerHTML='<div><div style="font-size:12px;font-weight:600">🧵 Cable</div></div><span style="font-family:var(--mono);color:'+(cabM<=20?'var(--red)':'var(--accent2)')+'">'+cabM+' m</span>';
+      grp.appendChild(cabRow);
+      list.appendChild(grp);
+    }
+  }catch(e){list.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';}
+}
 
 // ════════ MODO TÉCNICO (acceso limitado) ════════
 let tecnicoActual=null;
@@ -1469,6 +1717,10 @@ function checkPin(){
   if(v===PIN){
     document.getElementById('pinScreen').style.display='none';
     document.getElementById('moduleScreen').classList.add('show');
+  }else if(SUPERVISOR_PASSWORDS[v]){
+    // Acceso de supervisor: va a su pantalla de supervisor
+    document.getElementById('pinInput').value='';
+    entrarComoSupervisor(SUPERVISOR_PASSWORDS[v]);
   }else if(tecnicoPasswords()[v]){
     // Acceso de técnico: va directo a su pantalla limitada
     document.getElementById('pinInput').value='';
