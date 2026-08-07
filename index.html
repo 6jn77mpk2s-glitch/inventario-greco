@@ -5498,8 +5498,105 @@ function renderMaterialPanel(){
     bGastoCab.onclick=()=>registrarGastoCable(t);
     acts.appendChild(bGastoMat);acts.appendChild(bRollo);acts.appendChild(bGastoCab);
     card.appendChild(acts);
+    // Acciones de cable: ajustar / pasar / conteo
+    const actsCab=document.createElement('div');actsCab.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:6px';
+    const bAjustar=document.createElement('button');bAjustar.className='btn btn-ghost';bAjustar.textContent='🧵 Ajustar metros';bAjustar.style.cssText='flex:1;font-size:12px';
+    bAjustar.onclick=()=>ajustarCableManual(t);
+    const bPasar=document.createElement('button');bPasar.className='btn btn-ghost';bPasar.textContent='↔ Pasar cable';bPasar.style.cssText='flex:1;font-size:12px';
+    bPasar.onclick=()=>pasarCable(t);
+    const bConteo=document.createElement('button');bConteo.className='btn btn-ghost';bConteo.textContent='📏 Conteo';bConteo.style.cssText='flex:1;font-size:12px';
+    bConteo.onclick=()=>conteoCable(t);
+    actsCab.appendChild(bAjustar);actsCab.appendChild(bPasar);actsCab.appendChild(bConteo);
+    card.appendChild(actsCab);
     cont.appendChild(card);
   });
+  // Botón para ver el historial de movimientos de cable
+  const bHist=document.createElement('button');bHist.className='btn btn-ghost';bHist.textContent='📜 Movimientos de cable';bHist.style.cssText='width:100%;margin-top:12px';
+  bHist.onclick=verMovimientosCable;
+  cont.appendChild(bHist);
+}
+
+// Registra un movimiento de cable en el historial
+async function logCable(tipo,tecnico,tecnicoDestino,metros,nota){
+  try{
+    await api('cable_movimientos',{method:'POST',body:JSON.stringify({
+      fecha:new Date().toISOString(), tipo, tecnico:tecnico||'', tecnico_destino:tecnicoDestino||'',
+      metros:metros, nota:nota||'', usuario:(currentUser||'admin')
+    })});
+  }catch(e){}
+}
+
+// 1) Ajustar metros directo (poner el saldo exacto)
+async function ajustarCableManual(tecnico){
+  const row=cableData.find(r=>r.tecnico===tecnico);
+  const actual=parseFloat(row?row.metros:0)||0;
+  const v=await uiInput('Metros exactos que trae '+tecnico,{placeholder:String(actual)});
+  if(v===null)return;
+  const nuevos=Math.max(0,parseFloat(v)||0);
+  await setCableMetros(tecnico,nuevos);
+  await logCable('ajuste',tecnico,'',nuevos,'Ajuste directo (antes '+actual+'m)');
+  showToast('Cable ajustado a '+nuevos+'m');
+}
+
+// 2) Pasar cable de una cuadrilla a otra
+async function pasarCable(origen){
+  const row=cableData.find(r=>r.tecnico===origen);
+  const disp=parseFloat(row?row.metros:0)||0;
+  if(disp<=0){alert(origen+' no tiene cable para pasar');return;}
+  const otros=cuadrillasActivas().filter(t=>t!==origen);
+  if(!otros.length){alert('No hay otra cuadrilla');return;}
+  const destino=await uiChoose('¿A quién le pasas cable?',otros.map(t=>({label:'👷 '+t,value:t})),'Desde '+origen+' ('+disp+'m disponibles)');
+  if(!destino)return;
+  const v=await uiInput('¿Cuántos metros pasas a '+destino+'?',{placeholder:'ej. 5'});
+  if(v===null)return;
+  const m=Math.max(0,parseFloat(v)||0);
+  if(m<=0)return;
+  if(m>disp){alert('Solo hay '+disp+'m disponibles');return;}
+  const rowD=cableData.find(r=>r.tecnico===destino);
+  const dispD=parseFloat(rowD?rowD.metros:0)||0;
+  await setCableMetros(origen,disp-m);
+  await setCableMetros(destino,dispD+m);
+  await logCable('traspaso',origen,destino,m,origen+' → '+destino);
+  showToast('Pasados '+m+'m de '+origen+' a '+destino);
+}
+
+// 3) Conteo presencial: muestra esperado vs real y registra la diferencia
+async function conteoCable(tecnico){
+  const row=cableData.find(r=>r.tecnico===tecnico);
+  const esperado=parseFloat(row?row.metros:0)||0;
+  const v=await uiInput('Conteo físico de '+tecnico+' (el sistema dice '+esperado+'m)',{placeholder:'metros reales'});
+  if(v===null)return;
+  const real=Math.max(0,parseFloat(v)||0);
+  const dif=real-esperado;
+  await setCableMetros(tecnico,real);
+  await logCable('conteo',tecnico,'',real,'Esperado '+esperado+'m, real '+real+'m ('+(dif>=0?'+':'')+dif+'m)');
+  showToast('Conteo: '+real+'m ('+(dif>=0?'+':'')+dif+'m)');
+}
+
+// Historial de movimientos de cable
+async function verMovimientosCable(){
+  const cont=document.getElementById('cableLista');
+  cont.innerHTML='<div class="loading"><div class="spinner"></div>Cargando historial...</div>';
+  try{
+    const movs=await api('cable_movimientos?select=*&order=fecha.desc&limit=100');
+    cont.innerHTML='';
+    const volver=document.createElement('button');volver.className='btn btn-ghost';volver.textContent='← Volver';volver.style.cssText='width:100%;margin-bottom:12px';
+    volver.onclick=()=>{renderMaterialPanel();};
+    cont.appendChild(volver);
+    const tit=document.createElement('div');tit.style.cssText='font-size:14px;font-weight:700;margin-bottom:10px';tit.textContent='📜 Movimientos de cable';
+    cont.appendChild(tit);
+    if(!movs.length){cont.innerHTML+='<div class="empty">Sin movimientos aún.</div>';return;}
+    const tipoLbl={ajuste:'🧵 Ajuste',traspaso:'↔ Traspaso',conteo:'📏 Conteo'};
+    movs.forEach(m=>{
+      const d=new Date(m.fecha);
+      const fch=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      const card=document.createElement('div');card.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px';
+      card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;font-weight:600">'+(tipoLbl[m.tipo]||m.tipo)+' · '+esc(m.tecnico||'')+(m.tecnico_destino?' → '+esc(m.tecnico_destino):'')+'</span><span style="font-family:var(--mono);font-size:13px;color:var(--accent2)">'+m.metros+'m</span></div>'+
+        (m.nota?'<div style="font-size:11px;color:var(--muted);margin-top:3px">'+esc(m.nota)+'</div>':'')+
+        '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+fch+' · '+esc(m.usuario||'')+'</div>';
+      cont.appendChild(card);
+    });
+  }catch(e){cont.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';}
 }
 
 async function registrarGastoMaterial(tecnico){
