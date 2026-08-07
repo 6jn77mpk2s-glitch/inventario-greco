@@ -2909,10 +2909,21 @@ function renderTecnicos(movs){
         line.innerHTML='<span>'+esc(r.material)+'</span><span class="tec-line-qty" style="color:'+(bajo?'var(--red)':'var(--orange)')+'">'+cantidad+'</span>';
         det.appendChild(line);
       });
-      // cable
+      // cable total (detalles por rollo se cargan async en el mismo elemento)
       const lineC=document.createElement('div');lineC.className='tec-line';
       lineC.innerHTML='<span>🧵 Cable cal. 12</span><span class="tec-line-qty" style="color:'+(cabM<=20?'var(--red)':'var(--accent2)')+'">'+cabM+' m</span>';
       det.appendChild(lineC);
+      // cargar rollos async y añadir si hay 2
+      getRollos(t).then(rollT=>{
+        if(rollT.length>=2){
+          lineC.style.display='none'; // ocultar línea total y mostrar por rollo
+          rollT.forEach(r=>{
+            const lineR=document.createElement('div');lineR.className='tec-line';
+            lineR.innerHTML='<span>🧵 '+(r.tipo==='viejo'?'Cable viejo':'Cable nuevo')+'</span><span class="tec-line-qty" style="color:'+(parseFloat(r.metros)<=10?'var(--red)':'var(--accent2)')+'">'+parseFloat(r.metros)+' m</span>';
+            det.appendChild(lineR);
+          });
+        }
+      }).catch(()=>{});
       card.appendChild(det);
     }
     // Ya instalados hoy (aires que se instalaron)
@@ -3750,17 +3761,28 @@ async function agregarCentro(){
 async function agregarCable(){
   const metros=await pedirNum('¿Cuántos metros de cable se usaron en total?','$65 por metro extra · 5m gratis por equipo');
   if(metros===null||metros<=0)return;
-  const item={tipo:'cable',metros,monto:0,montoManual:null,
-    nombreVisible:'Cable '+metros+'m',descuentaCableMetros:metros};
+  // Si la cuadrilla tiene 2 rollos, preguntar de cuál
+  let rolloTipo='';
+  const cuad=document.getElementById('trabCuadrilla').value;
+  if(cuad){
+    const rollos=await getRollos(cuad);
+    if(rollos.length>=2){
+      const rOpts=rollos.map(r=>({
+        label:(r.tipo==='viejo'?'📦 Rollo viejo':'🆕 Rollo nuevo')+' — '+parseFloat(r.metros)+'m disponibles',
+        value:r.tipo
+      }));
+      rolloTipo=await uiChoose('¿De cuál rollo se usaron los '+metros+'m?',rOpts,'');
+      if(!rolloTipo)return;
+    }
+  }
+  const item={tipo:'cable',metros,monto:0,montoManual:null,rolloTipo,
+    nombreVisible:'Cable '+metros+'m'+(rolloTipo?' (rollo '+(rolloTipo==='viejo'?'viejo':'nuevo')+')':''),
+    descuentaCableMetros:metros};
   desgloseItems.push(item);
-  recalcCable(); // calcula y redondea
-  // Preguntar si quiere ajustar el monto final
+  recalcCable();
   const sugerido=item.monto;
   const ajuste=await uiInput('Precio del cable (redondeado al 50)',{tipo:'numero',valor:sugerido,sub:'Puedes dejarlo o poner otro número cerrado'});
-  if(ajuste!==null&&ajuste!==''){
-    const val=parseFloat(ajuste);
-    if(!isNaN(val))item.montoManual=val;
-  }
+  if(ajuste!==null&&ajuste!==''){const val=parseFloat(ajuste);if(!isNaN(val))item.montoManual=val;}
   renderDesglose();recalcTrabajo();
 }
 async function agregarDesinstalacion(){
@@ -3973,7 +3995,10 @@ async function guardarTrabajo(){
       // Descontar material del saldo del técnico de la cuadrilla (solo al crear)
       for(const d of desgloseItems){
         if(d.descuentaSaldo&&d.descuentaCant>0){await ajustarMaterialTecnico(cuadrilla,d.descuentaSaldo,-d.descuentaCant);}
-        if(d.descuentaCableMetros>0){await ajustarCableTecnico(cuadrilla,-d.descuentaCableMetros);}
+        if(d.descuentaCableMetros>0){
+          if(d.rolloTipo){await descontarRollo(cuadrilla,d.descuentaCableMetros,d.rolloTipo);}
+          await ajustarCableTecnico(cuadrilla,-d.descuentaCableMetros);
+        }
       }
       // Por cada pago por TRANSFERENCIA, crear una transferencia PENDIENTE por asignar
       const montoTransfer=pagosLimpios.filter(p=>p.forma==='transferencia').reduce((s,p)=>s+(parseFloat(p.monto)||0),0);
@@ -4551,13 +4576,29 @@ async function renderRepoEstandar(){
       }
       cont.appendChild(row);
     });
-    // ── Sección de CABLE ──
+    // ── Sección de CABLE con sistema de rollos ──
     try{ cableData=await api('cable_tecnicos?select=*'); }catch(e){ cableData=cableData||[]; }
     const cab=cableData.find(r=>r.tecnico===repoTecnicoActual);
     const metros=parseFloat(cab?cab.metros:0)||0;
+    const rollos=await cargarRollos(repoTecnicoActual);
     const cabBox=document.createElement('div');
     cabBox.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:10px';
-    cabBox.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:700">🧵 Cable cal. 12</span><span style="font-family:var(--mono);font-size:15px;color:'+(metros<=20?'var(--red)':'var(--accent2)')+'">'+metros+' m</span></div>';
+    // Header cable
+    const cabHead=document.createElement('div');cabHead.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+    cabHead.innerHTML='<span style="font-size:13px;font-weight:700">🧵 Cable cal. 12</span><span style="font-family:var(--mono);font-size:15px;color:'+(metros<=20?'var(--red)':'var(--accent2)')+'">'+metros+' m total</span>';
+    cabBox.appendChild(cabHead);
+    // Mostrar rollos individuales si hay más de uno
+    if(rollos.length>1){
+      rollos.forEach(r=>{
+        const rl=document.createElement('div');rl.style.cssText='display:flex;justify-content:space-between;padding:5px 8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:12px';
+        rl.innerHTML='<span>'+(r.tipo==='viejo'?'📦 Rollo viejo':'🆕 Rollo nuevo')+'</span><span style="font-family:var(--mono);color:'+(parseFloat(r.metros)<=10?'var(--red)':'var(--accent2)')+'">'+parseFloat(r.metros)+'m</span>';
+        cabBox.appendChild(rl);
+      });
+    }
+    // Botón dar rollo nuevo
+    const bNuevo=document.createElement('button');bNuevo.className='btn btn-success';bNuevo.textContent='📦 Dar rollo nuevo (100m)';bNuevo.style.cssText='width:100%;margin-bottom:8px;font-size:13px';
+    bNuevo.onclick=async()=>{await darRolloNuevo(repoTecnicoActual);};
+    cabBox.appendChild(bNuevo);
     const cabActs=document.createElement('div');cabActs.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
     const bAj=document.createElement('button');bAj.className='btn btn-ghost';bAj.textContent='🧵 Ajustar';bAj.style.cssText='flex:1;font-size:12px';
     bAj.onclick=async()=>{await ajustarCableManual(repoTecnicoActual);renderRepoEstandar();};
@@ -5988,6 +6029,71 @@ async function registrarGastoMaterial(tecnico){
   matTecData=await api('material_tecnicos?select=*');
   renderMaterialPanel();
   showToast('Registrado: -'+cant+' '+mat.material);
+}
+
+// ── SISTEMA DE ROLLOS DE CABLE ──
+let rollosCache={}; // {tecnico: [{id,tipo,metros,metros_iniciales}]}
+
+async function cargarRollos(tecnico){
+  try{
+    const rows=await api('cable_rollos?select=*&tecnico=eq.'+encodeURIComponent(tecnico)+'&order=id.asc');
+    rollosCache[tecnico]=rows.filter(r=>parseFloat(r.metros)>0);
+    return rollosCache[tecnico];
+  }catch(e){return [];}
+}
+
+async function getRollos(tecnico){
+  if(rollosCache[tecnico]===undefined)await cargarRollos(tecnico);
+  return rollosCache[tecnico]||[];
+}
+
+// Dar rollo nuevo de 100m al técnico (desde Sur) y marcar el viejo si hay metros actuales
+async function darRolloNuevo(tecnico){
+  const ok=await uiConfirm('¿Dar rollo nuevo de 100m a '+tecnico+'?',{sub:'Se descontará del inventario de cable en SUR',ok:'✓ Dar rollo'});
+  if(!ok)return;
+  try{
+    // 1) Si hay metros actuales en cable_tecnicos, asegurarse de que exista rollo viejo
+    const cabRow=cableData.find(r=>r.tecnico===tecnico);
+    const metrosActuales=parseFloat(cabRow?cabRow.metros:0)||0;
+    const rollos=await cargarRollos(tecnico);
+    if(metrosActuales>0&&!rollos.find(r=>r.tipo==='viejo')){
+      await api('cable_rollos',{method:'POST',body:JSON.stringify({tecnico,tipo:'viejo',metros:metrosActuales,metros_iniciales:metrosActuales})});
+    }
+    // 2) Crear o actualizar rollo nuevo (si ya tenía uno, sumar)
+    const rolloNuevo=rollos.find(r=>r.tipo==='nuevo');
+    if(rolloNuevo){
+      const nuevos=parseFloat(rolloNuevo.metros)+100;
+      await api('cable_rollos?id=eq.'+rolloNuevo.id,{method:'PATCH',body:JSON.stringify({metros:nuevos,metros_iniciales:nuevos})});
+    }else{
+      await api('cable_rollos',{method:'POST',body:JSON.stringify({tecnico,tipo:'nuevo',metros:100,metros_iniciales:100})});
+    }
+    // 3) Actualizar total en cable_tecnicos
+    const nuevoTotal=metrosActuales+100;
+    await setCableMetros(tecnico,nuevoTotal);
+    // 4) Descontar 100m del inventario de cable en Sur
+    const inv=await api("materiales?select=*&sucursal=eq.sur&nombre=ilike.*cable*");
+    if(inv.length){
+      const actual=parseFloat(inv[0].qty)||0;
+      // cable se mide en metros, una bobina = 100m
+      await api('materiales?id=eq.'+inv[0].id,{method:'PATCH',body:JSON.stringify({qty:Math.max(0,actual-100)})});
+    }
+    await logCable('rollo_nuevo',tecnico,'',100,'Rollo nuevo de 100m — descontado de Sur');
+    rollosCache[tecnico]=undefined; // invalidar cache
+    showToast('Rollo nuevo dado a '+tecnico+' ✓');
+    renderRepoEstandar();
+  }catch(e){showToast('Error: '+e.message,true);}
+}
+
+// Descontar metros de un rollo específico (al guardar trabajo)
+async function descontarRollo(tecnico,metros,tipoRollo){
+  try{
+    const rows=await api('cable_rollos?select=*&tecnico=eq.'+encodeURIComponent(tecnico)+'&tipo=eq.'+tipoRollo);
+    if(rows.length){
+      const nuevo=Math.max(0,parseFloat(rows[0].metros)-metros);
+      await api('cable_rollos?id=eq.'+rows[0].id,{method:'PATCH',body:JSON.stringify({metros:nuevo})});
+      rollosCache[tecnico]=undefined;
+    }
+  }catch(e){}
 }
 
 async function setCableMetros(tecnico,nuevos){
