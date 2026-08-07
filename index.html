@@ -655,7 +655,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="field-row">
       <div class="field"><label>Fecha</label><input type="date" id="trabFecha"></div>
       <div class="field"><label>Cuadrilla</label>
-        <select id="trabCuadrilla" onchange="recalcTrabajo()"><option value="">— Selecciona —</option><option>Alan</option><option>Eduardo</option><option>Henry</option><option>David</option></select>
+        <select id="trabCuadrilla" onchange="recalcTrabajo()"><option value="">— Selecciona —</option></select>
       </div>
     </div>
 
@@ -1095,6 +1095,7 @@ async function cargarCuadrillas(){
       CUADRILLAS=rows.map(r=>({nombre:r.nombre,password:r.password||'',grupo:r.grupo||'henry_david',ver_como:r.ver_como!==false,activa:r.activa!==false}));
     }
   }catch(e){}
+  refreshCuadrillaSelect(); // actualizar el select con las cuadrillas de la BD
 }
 
 let branch=null,aires=[],mats=[],movimientos=[],activeFilter='ALL',filterVisible=false,activeTab='aires';
@@ -3515,12 +3516,27 @@ function aplicarModoTecnicoUI(on){
   // bloquear cambio de cuadrilla en modo técnico
   document.getElementById('trabCuadrilla').disabled=on;
 }
+// Llena el select de cuadrilla con las cuadrillas activas de la BD
+function refreshCuadrillaSelect(){
+  const sel=document.getElementById('trabCuadrilla');
+  if(!sel)return;
+  const current=sel.value;
+  sel.innerHTML='<option value="">— Selecciona —</option>';
+  cuadrillasActivas().forEach(nombre=>{
+    const o=document.createElement('option');o.value=nombre;o.textContent=nombre;
+    sel.appendChild(o);
+  });
+  // restaurar valor si sigue siendo válido
+  if(current&&cuadrillasActivas().includes(current))sel.value=current;
+}
+
 function openTrabajoModal(){
   editandoTrabajoId=null;
   modoTecnicoCaptura=false;tecCapturaUid=null;
   aplicarModoTecnicoUI(false);
   document.getElementById('trabModalTitle').textContent='➕ Nuevo trabajo';
   document.getElementById('trabFecha').value=fmtFecha(new Date());
+  refreshCuadrillaSelect();
   // Cuadrilla por defecto = nombre del perfil si es técnico, si no sin seleccionar
   const tecnicos=cuadrillasActivas();
   document.getElementById('trabCuadrilla').value=tecnicos.includes(currentUser)?currentUser:'';
