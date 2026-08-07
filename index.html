@@ -679,6 +679,20 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       </div>
     </div>
 
+    <!-- Supervisor y su comisión — oculto en modo técnico -->
+    <div class="field-row" id="rowSupervisor">
+      <div class="field"><label>Supervisor</label>
+        <select id="trabSupervisor" onchange="recalcTrabajo()">
+          <option value="">— Sin supervisor —</option>
+          <option value="Alan">Alan</option>
+          <option value="Eduardo">Eduardo</option>
+        </select>
+      </div>
+      <div class="field"><label>Comisión supervisor <span id="sugSupervisor" style="color:var(--muted);font-size:10px"></span></label>
+        <input type="number" id="trabPagoSup" placeholder="0" inputmode="decimal" oninput="this.dataset.touched=1">
+      </div>
+    </div>
+
     <div class="field"><label>Nota (opcional)</label><input type="text" id="trabNota" placeholder="cliente, dirección, etc."></div>
 
     <div class="editor-actions">
@@ -3120,6 +3134,7 @@ function buildTrabajoCard(t){
     detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>👷 Técnico</span><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(t.pago_tecnico)||0).toLocaleString()+'</span></div>';
     if(ayuNom)detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>🤝 Ayudante ('+esc(ayuNom)+')</span><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(t.pago_ayudante)||0).toLocaleString()+'</span></div>';
     if(parseFloat(t.pago_atrasado)>0)detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>Atrasado'+(t.pago_atrasado_nota?' ('+esc(t.pago_atrasado_nota)+')':'')+'</span><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(t.pago_atrasado)||0).toLocaleString()+'</span></div>';
+    if(parseFloat(t.pago_supervisor)>0)detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>🧑\u200d💼 Supervisor ('+esc(t.supervisor||'')+')</span><span style="font-family:var(--mono);color:#c084fc">$'+(parseFloat(t.pago_supervisor)||0).toLocaleString()+'</span></div>';
   }
   det.innerHTML=detHtml;
   act.appendChild(det);
@@ -3193,6 +3208,9 @@ function editarTrabajo(id){
   const pa=document.getElementById('trabPagoAyu');pa.value=parseFloat(t.pago_ayudante)||0;pa.dataset.touched='1';
   document.getElementById('trabPagoAtras').value=parseFloat(t.pago_atrasado)||0;
   document.getElementById('trabPagoAtrasNota').value=t.pago_atrasado_nota||'';
+  // supervisor
+  document.getElementById('trabSupervisor').value=t.supervisor||'';
+  const ps=document.getElementById('trabPagoSup');ps.value=parseFloat(t.pago_supervisor)||0;ps.dataset.touched='1';
   document.getElementById('trabNota').value=t.nota||'';
   recalcTrabajo();
 }
@@ -3241,6 +3259,7 @@ function aplicarModoTecnicoUI(on){
   document.getElementById('fieldPagoTec').style.display=on?'none':'';
   document.getElementById('fieldPagoAyu').style.display=on?'none':'';
   document.getElementById('rowPagoAtras').style.display=on?'none':'';
+  document.getElementById('rowSupervisor').style.display=on?'none':'';
   // bloquear cambio de cuadrilla en modo técnico
   document.getElementById('trabCuadrilla').disabled=on;
 }
@@ -3258,6 +3277,8 @@ function openTrabajoModal(){
   document.getElementById('trabPagoAyu').value='';document.getElementById('trabPagoAyu').dataset.touched='';
   document.getElementById('trabPagoAtras').value='';
   document.getElementById('trabPagoAtrasNota').value='';
+  document.getElementById('trabSupervisor').value='';
+  document.getElementById('trabPagoSup').value='';document.getElementById('trabPagoSup').dataset.touched='';
   document.getElementById('trabNota').value='';
   refreshAyudanteSelect();
   pagosItems=[{forma:'efectivo',quien:'',monto:0}];
@@ -3565,9 +3586,34 @@ function recalcTrabajo(){
   if(!campoTec.dataset.touched)campoTec.value=sugTec||'';
   if(!campoAyu.dataset.touched)campoAyu.value=sugAyu||'';
   document.getElementById('sugTecnico').textContent=sugTec?'(sugerido $'+sugTec+')':'';
+  // ── Comisión de supervisor ──
+  const sugSup=calcComisionSupervisor(cuad);
+  const campoSup=document.getElementById('trabPagoSup');
+  const supSel=document.getElementById('trabSupervisor').value;
+  if(campoSup&&!campoSup.dataset.touched)campoSup.value=(supSel?sugSup:'')||'';
+  const sugSupLbl=document.getElementById('sugSupervisor');
+  if(sugSupLbl)sugSupLbl.textContent=(supSel&&sugSup)?'(sugerido $'+sugSup+')':'';
   autollenarPagoUnico();
   recalcSumaPagos();
   return {subtotal,iva,total};
+}
+
+// Comisión del supervisor: $200 por equipo 1 ton, $300 por 2 ton, $100 por servicio (c/u).
+// No aplica si la cuadrilla del trabajo es Eduardo (él no genera comisión por su propio trabajo).
+const COMISION_SUPERVISOR={inst_1:200,inst_2:300,servicio:100};
+function calcComisionSupervisor(cuadrilla){
+  if(cuadrilla==='Eduardo')return 0; // la cuadrilla Eduardo no genera comisión
+  let com=0;
+  desgloseItems.forEach(d=>{
+    const ton=(d.ton||'').toString();
+    if(d.tipo==='instalacion'){
+      if(ton.indexOf('2')>=0)com+=COMISION_SUPERVISOR.inst_2;
+      else com+=COMISION_SUPERVISOR.inst_1; // 1 ton por defecto
+    }else if(d.tipo==='servicio'){
+      com+=COMISION_SUPERVISOR.servicio;
+    }
+  });
+  return com;
 }
 
 let guardandoTrabajo=false; // evita doble guardado (doble tap / doble submit)
@@ -3615,6 +3661,11 @@ async function guardarTrabajo(){
   }
   const pagoAtras=parseFloat(document.getElementById('trabPagoAtras').value)||0;
   const pagoAtrasNota=document.getElementById('trabPagoAtrasNota').value.trim();
+  // Supervisor y su comisión (no aplica en modo técnico ni cuando la cuadrilla es Eduardo)
+  let supervisor=document.getElementById('trabSupervisor').value||'';
+  let pagoSup=parseFloat(document.getElementById('trabPagoSup').value)||0;
+  if(modoTecnicoCaptura||cuadrilla==='Eduardo'){supervisor='';pagoSup=0;}
+  if(!supervisor)pagoSup=0; // sin supervisor no hay comisión
   const nota=document.getElementById('trabNota').value.trim();
   // desglose simple para guardar
   const desgGuardar=desgloseItems.map(d=>({nombre:d.nombreVisible,monto:d.monto||0,tipo:d.tipo,subtipo:d.subtipo||'',cantidad:d.cantidad||0,metros:d.metros||0,pagaConcepto:d.pagaConcepto||'',pagaCant:d.pagaCant||(d.pagaConcepto?1:0)}));
@@ -3628,6 +3679,7 @@ async function guardarTrabajo(){
     con_factura:factura,subtotal,total,cobrado:total,
     forma_pago:forma,quien_cobra:quienCobra,pagos:JSON.stringify(pagosLimpios),
     pago_tecnico:pagoTec,pago_ayudante:pagoAyu,
+    supervisor:supervisor,pago_supervisor:pagoSup,
     pago_atrasado:pagoAtras,pago_atrasado_nota:pagoAtrasNota,
     nota,usuario:modoTecnicoCaptura?tecnicoActual:(currentUser||''),
     agenda_uid:modoTecnicoCaptura?(tecCapturaUid||''):''
@@ -3964,16 +4016,18 @@ function renderPagos(){
   if(!subset.length){list.innerHTML='<div class="empty">Sin trabajos en '+titulo.toLowerCase()+'.</div>';return;}
 
   // acumular por técnico y por ayudante
-  const tec={},ayu={};
-  let totTec=0,totAyu=0,totAtras=0;
+  const tec={},ayu={},sup={};
+  let totTec=0,totAyu=0,totAtras=0,totSup=0;
   subset.forEach(t=>{
     const pt=parseFloat(t.pago_tecnico)||0;
     const pa=parseFloat(t.pago_ayudante)||0;
     const at=parseFloat(t.pago_atrasado)||0;
+    const ps=parseFloat(t.pago_supervisor)||0;
     if(t.cuadrilla)tec[t.cuadrilla]=(tec[t.cuadrilla]||0)+pt;
     const an=t.ayudante_nombre||t.ayudante;
     if(an)ayu[an]=(ayu[an]||0)+pa;
-    totTec+=pt;totAyu+=pa;totAtras+=at;
+    if(t.supervisor&&ps>0)sup[t.supervisor]=(sup[t.supervisor]||0)+ps;
+    totTec+=pt;totAyu+=pa;totAtras+=at;totSup+=ps;
   });
 
   list.innerHTML='';
@@ -3981,7 +4035,7 @@ function renderPagos(){
   const head=document.createElement('div');head.className='item';head.style.padding='12px 14px';
   head.innerHTML='<div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+esc(titulo)+'</div>'+
     '<div style="display:flex;justify-content:space-between"><span style="font-size:13px;font-weight:700">Total a pagar</span>'+
-    '<span style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--orange)">$'+(totTec+totAyu+totAtras).toLocaleString()+'</span></div>';
+    '<span style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--orange)">$'+(totTec+totAyu+totAtras+totSup).toLocaleString()+'</span></div>';
   list.appendChild(head);
 
   // Técnicos
@@ -3990,6 +4044,9 @@ function renderPagos(){
   // Ayudantes
   const ayuRows=Object.keys(ayu).filter(k=>ayu[k]!==0).map(k=>[k,ayu[k],'var(--accent2)']);
   if(ayuRows.length)list.appendChild(corteBlock('🤝 Ayudantes',ayuRows));
+  // Supervisores
+  const supRows=Object.keys(sup).filter(k=>sup[k]!==0).map(k=>[k,sup[k],'#c084fc']);
+  if(supRows.length)list.appendChild(corteBlock('🧑‍💼 Supervisores',supRows));
   if(totAtras>0)list.appendChild(corteBlock('⏰ Pagos atrasados',[['Total atrasado',totAtras,'var(--orange)']]));
 
   // Detalle por trabajo
@@ -4004,7 +4061,7 @@ function renderPagos(){
     row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center">'+
       '<div><div style="font-size:12px;font-weight:600">👷 '+esc(t.cuadrilla)+(an?' + '+esc(an):'')+'</div>'+
       '<div style="font-size:10px;color:var(--muted)">'+fch+'</div></div>'+
-      '<div style="text-align:right;font-family:var(--mono);font-size:11px"><div style="color:var(--green)">Téc $'+(parseFloat(t.pago_tecnico)||0)+'</div><div style="color:var(--accent2)">Ayu $'+(parseFloat(t.pago_ayudante)||0)+'</div></div></div>';
+      '<div style="text-align:right;font-family:var(--mono);font-size:11px"><div style="color:var(--green)">Téc $'+(parseFloat(t.pago_tecnico)||0)+'</div><div style="color:var(--accent2)">Ayu $'+(parseFloat(t.pago_ayudante)||0)+'</div>'+((parseFloat(t.pago_supervisor)||0)>0?'<div style="color:#c084fc">Sup '+esc(t.supervisor||'')+' $'+(parseFloat(t.pago_supervisor)||0)+'</div>':'')+'</div></div>';
     detGrp.appendChild(row);
   });
   list.appendChild(detGrp);
@@ -4717,10 +4774,10 @@ function calcEntradasSemana(){
 }
 
 function calcPagosAuto(){
-  // pagos a técnico + ayudante de la semana (salen del efectivo automáticamente)
+  // pagos a técnico + ayudante + comisión supervisor de la semana (salen del efectivo)
   let total=0;
   trabajos.forEach(t=>{
-    total+=(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0)+(parseFloat(t.pago_atrasado)||0);
+    total+=(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0)+(parseFloat(t.pago_atrasado)||0)+(parseFloat(t.pago_supervisor)||0);
   });
   return total;
 }
