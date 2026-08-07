@@ -3474,7 +3474,7 @@ const PRECIOS_MATERIAL={
   'brake':150,
   'base_1':700,'base_2':800,'base_goma':600,'base_metal':800,
   'centro_2':600,'centro_4':900,
-  'cable_metro':60
+  'cable_metro':65
 };
 const CABLE_GRATIS_POR_EQUIPO=5;
 // Mapa de material de trabajo -> nombre en saldo del técnico
@@ -3748,7 +3748,7 @@ async function agregarCentro(){
   renderDesglose();recalcTrabajo();
 }
 async function agregarCable(){
-  const metros=await pedirNum('¿Cuántos metros de cable se usaron en total?','$60 por metro extra · 5m gratis por equipo');
+  const metros=await pedirNum('¿Cuántos metros de cable se usaron en total?','$65 por metro extra · 5m gratis por equipo');
   if(metros===null||metros<=0)return;
   const item={tipo:'cable',metros,monto:0,montoManual:null,
     nombreVisible:'Cable '+metros+'m',descuentaCableMetros:metros};
