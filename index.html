@@ -4226,10 +4226,57 @@ async function renderRepoEstandar(){
       }
       cont.appendChild(row);
     });
-    if(!algo)cont.innerHTML='<div class="empty">Sin estándar configurado.</div>';
+    // ── Sección de CABLE ──
+    try{ cableData=await api('cable_tecnicos?select=*'); }catch(e){ cableData=cableData||[]; }
+    const cab=cableData.find(r=>r.tecnico===repoTecnicoActual);
+    const metros=parseFloat(cab?cab.metros:0)||0;
+    const cabBox=document.createElement('div');
+    cabBox.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:10px';
+    cabBox.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:13px;font-weight:700">🧵 Cable cal. 12</span><span style="font-family:var(--mono);font-size:15px;color:'+(metros<=20?'var(--red)':'var(--accent2)')+'">'+metros+' m</span></div>';
+    const cabActs=document.createElement('div');cabActs.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+    const bAj=document.createElement('button');bAj.className='btn btn-ghost';bAj.textContent='🧵 Ajustar';bAj.style.cssText='flex:1;font-size:12px';
+    bAj.onclick=async()=>{await ajustarCableManual(repoTecnicoActual);renderRepoEstandar();};
+    const bPa=document.createElement('button');bPa.className='btn btn-ghost';bPa.textContent='↔ Pasar';bPa.style.cssText='flex:1;font-size:12px';
+    bPa.onclick=async()=>{await pasarCable(repoTecnicoActual);renderRepoEstandar();};
+    const bCo=document.createElement('button');bCo.className='btn btn-ghost';bCo.textContent='📏 Conteo';bCo.style.cssText='flex:1;font-size:12px';
+    bCo.onclick=async()=>{await conteoCable(repoTecnicoActual);renderRepoEstandar();};
+    cabActs.appendChild(bAj);cabActs.appendChild(bPa);cabActs.appendChild(bCo);
+    cabBox.appendChild(cabActs);
+    const bHist=document.createElement('button');bHist.className='btn btn-ghost';bHist.textContent='📜 Movimientos de cable';bHist.style.cssText='width:100%;margin-top:8px;font-size:12px';
+    bHist.onclick=verMovimientosCableModal;
+    cabBox.appendChild(bHist);
+    cont.appendChild(cabBox);
+
+    if(!algo&&metros===0)cont.innerHTML='<div class="empty">Sin material.</div>'+cont.innerHTML;
   }catch(e){
     cont.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
   }
+}
+
+// Historial de cable dentro del modal de reponer
+async function verMovimientosCableModal(){
+  const cont=document.getElementById('repoEstandarLista');
+  cont.innerHTML='<div class="loading"><div class="spinner"></div>Cargando historial...</div>';
+  try{
+    const movs=await api('cable_movimientos?select=*&order=fecha.desc&limit=100');
+    cont.innerHTML='';
+    const volver=document.createElement('button');volver.className='btn btn-ghost';volver.textContent='← Volver';volver.style.cssText='width:100%;margin-bottom:12px';
+    volver.onclick=()=>renderRepoEstandar();
+    cont.appendChild(volver);
+    const tit=document.createElement('div');tit.style.cssText='font-size:14px;font-weight:700;margin-bottom:10px';tit.textContent='📜 Movimientos de cable';
+    cont.appendChild(tit);
+    if(!movs.length){const e=document.createElement('div');e.className='empty';e.textContent='Sin movimientos aún.';cont.appendChild(e);return;}
+    const tipoLbl={ajuste:'🧵 Ajuste',traspaso:'↔ Traspaso',conteo:'📏 Conteo'};
+    movs.forEach(m=>{
+      const d=new Date(m.fecha);
+      const fch=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      const card=document.createElement('div');card.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px';
+      card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;font-weight:600">'+(tipoLbl[m.tipo]||m.tipo)+' · '+esc(m.tecnico||'')+(m.tecnico_destino?' → '+esc(m.tecnico_destino):'')+'</span><span style="font-family:var(--mono);font-size:13px;color:var(--accent2)">'+m.metros+'m</span></div>'+
+        (m.nota?'<div style="font-size:11px;color:var(--muted);margin-top:3px">'+esc(m.nota)+'</div>':'')+
+        '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+fch+' · '+esc(m.usuario||'')+'</div>';
+      cont.appendChild(card);
+    });
+  }catch(e){cont.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';}
 }
 
 async function reponerUnoEstandar(material,falta,std){
@@ -5621,12 +5668,17 @@ async function registrarGastoMaterial(tecnico){
 async function setCableMetros(tecnico,nuevos){
   nuevos=Math.max(0,nuevos);
   try{
-    const row=cableData.find(r=>r.tecnico===tecnico);
+    let row=cableData.find(r=>r.tecnico===tecnico);
     if(row){
       await api('cable_tecnicos?id=eq.'+row.id,{method:'PATCH',body:JSON.stringify({metros:nuevos,updated_at:new Date().toISOString()})});
       row.metros=nuevos;
+    }else{
+      // crear si no existe
+      const nueva=await api('cable_tecnicos',{method:'POST',body:JSON.stringify({tecnico,metros:nuevos})});
+      if(nueva&&nueva[0])cableData.push(nueva[0]); else cableData.push({tecnico,metros:nuevos});
     }
-    renderMaterialPanel();
+    // re-render solo si el panel viejo está abierto
+    if(document.getElementById('modalCable')&&document.getElementById('modalCable').classList.contains('open')){renderMaterialPanel();}
   }catch(e){showToast('Error',true);}
 }
 async function entregarRollo(tecnico){
