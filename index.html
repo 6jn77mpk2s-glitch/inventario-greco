@@ -1327,38 +1327,99 @@ function renderSupSemana(){
   });
 }
 
+let supPagosModo='semana'; // 'semana' o 'dia'
+
 function renderSupPagos(){
   const list=document.getElementById('supListPagos');
   list.innerHTML='';
   if(!supTrabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.</div>';return;}
-  // Agrupar pagos por cuadrilla
-  const porCuad={};
-  supTrabajos.forEach(t=>{
-    const cu=t.cuadrilla||'?';
-    if(!porCuad[cu])porCuad[cu]={tec:0,ayu:0,sup:0,trabajos:0};
-    porCuad[cu].tec+=parseFloat(t.pago_tecnico)||0;
-    porCuad[cu].ayu+=parseFloat(t.pago_ayudante)||0;
-    porCuad[cu].sup+=parseFloat(t.pago_supervisor)||0;
-    porCuad[cu].trabajos++;
+
+  // Selector Por día / Por semana
+  const sel=document.createElement('div');sel.style.cssText='display:flex;gap:6px;margin-bottom:12px';
+  ['semana','dia'].forEach(modo=>{
+    const b=document.createElement('button');
+    b.className='btn '+(supPagosModo===modo?'btn-primary':'btn-ghost');
+    b.textContent=modo==='semana'?'📅 Por semana':'📆 Por día';
+    b.style.cssText='flex:1;font-size:13px';
+    b.onclick=()=>{supPagosModo=modo;renderSupPagos();};
+    sel.appendChild(b);
   });
+  list.appendChild(sel);
+
+  // Comisión total siempre arriba
   const totSup=supTrabajos.reduce((s,t)=>s+(parseFloat(t.pago_supervisor)||0),0);
-  // Mi comisión total arriba
   const head=document.createElement('div');head.className='item';head.style.cssText='padding:14px;margin-bottom:10px;border-left:3px solid #c084fc';
   head.innerHTML='<div style="font-size:12px;color:var(--muted)">Mi comisión total esta semana</div><div style="font-family:var(--mono);font-size:22px;font-weight:700;color:#c084fc">$'+totSup.toLocaleString()+'</div>';
   list.appendChild(head);
-  // Por cuadrilla
+
+  if(supPagosModo==='semana'){
+    renderSupPagosPorSemana(list);
+  }else{
+    renderSupPagosPorDia(list);
+  }
+}
+
+// Agrupa pagos por cuadrilla, con nombres de ayudantes
+function buildPagosCuad(trabajos){
+  const porCuad={};
+  trabajos.forEach(t=>{
+    const cu=t.cuadrilla||'?';
+    if(!porCuad[cu])porCuad[cu]={tec:0,ayudantes:{},sup:0,trabajos:0};
+    porCuad[cu].tec+=parseFloat(t.pago_tecnico)||0;
+    porCuad[cu].sup+=parseFloat(t.pago_supervisor)||0;
+    porCuad[cu].trabajos++;
+    // Ayudante con nombre
+    const ayn=t.ayudante_nombre||t.ayudante||'';
+    const ayp=parseFloat(t.pago_ayudante)||0;
+    if(ayn&&ayp>0){
+      porCuad[cu].ayudantes[ayn]=(porCuad[cu].ayudantes[ayn]||0)+ayp;
+    }else if(ayp>0){
+      porCuad[cu].ayudantes['Ayudante']=(porCuad[cu].ayudantes['Ayudante']||0)+ayp;
+    }
+  });
+  return porCuad;
+}
+
+function renderCuadBloque(list,porCuad){
   Object.keys(porCuad).forEach(cu=>{
     const d=porCuad[cu];
     const grp=document.createElement('div');grp.className='marca-group';
-    const h=document.createElement('div');h.className='marca-header';h.style.color='var(--accent2)';h.textContent='👷 '+cu+' ('+d.trabajos+' trabajo'+(d.trabajos!==1?'s':'')+')';
+    const h=document.createElement('div');h.className='marca-header';h.style.color='var(--accent2)';
+    h.textContent='👷 '+cu+' ('+d.trabajos+' trabajo'+(d.trabajos!==1?'s':'')+')';
     grp.appendChild(h);
-    [[('Técnico '+cu),d.tec,'var(--green)'],[('Ayudante'),d.ayu,'var(--accent2)'],[('Mi comisión'),d.sup,'#c084fc']].forEach(([lbl,val,col])=>{
-      if(!val)return;
+    const filas=[];
+    if(d.tec)filas.push(['Técnico '+cu,d.tec,'var(--green)']);
+    // Ayudantes con nombre
+    Object.keys(d.ayudantes).forEach(nombre=>{
+      if(d.ayudantes[nombre])filas.push([nombre+' (ayudante)',d.ayudantes[nombre],'var(--accent2)']);
+    });
+    if(d.sup)filas.push(['Mi comisión',d.sup,'#c084fc']);
+    filas.forEach(([lbl,val,col])=>{
       const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:8px 10px;background:var(--card);border-radius:8px;margin-bottom:4px';
       row.innerHTML='<span style="font-size:13px">'+esc(lbl)+'</span><span style="font-family:var(--mono);color:'+col+'">$'+val.toLocaleString()+'</span>';
       grp.appendChild(row);
     });
     list.appendChild(grp);
+  });
+}
+
+function renderSupPagosPorSemana(list){
+  const porCuad=buildPagosCuad(supTrabajos);
+  renderCuadBloque(list,porCuad);
+}
+
+function renderSupPagosPorDia(list){
+  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const porDia={};
+  supTrabajos.forEach(t=>{(porDia[t.fecha]=porDia[t.fecha]||[]).push(t);});
+  Object.keys(porDia).sort().forEach(fecha=>{
+    const d=new Date(fecha+'T12:00:00');
+    const titDia=document.createElement('div');
+    titDia.style.cssText='font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px;padding-left:2px';
+    titDia.textContent=dias[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+    list.appendChild(titDia);
+    const porCuad=buildPagosCuad(porDia[fecha]);
+    renderCuadBloque(list,porCuad);
   });
 }
 
