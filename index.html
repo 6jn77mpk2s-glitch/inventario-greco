@@ -668,6 +668,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="quick-btn" onclick="agregarCable()">🧵 Cable</button>
       <button class="quick-btn" onclick="agregarCentro()">📦 Centro</button>
       <button class="quick-btn" onclick="agregarServicio()">🛠️ Servicio</button>
+      <button class="quick-btn" onclick="activarModoGarantia()" id="btnGarantia" style="background:rgba(34,197,94,.15);border-color:var(--green)">🛡️ Garantía</button>
     </div>
     <div id="desgloseList" style="display:flex;flex-direction:column;gap:6px"></div>
     <button class="btn btn-ghost" onclick="addDesgloseRow()" style="align-self:flex-start">+ Otro tipo (instalación, desinstalación...)</button>
@@ -685,13 +686,15 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <div class="qty-total-row"><span class="qty-total-lbl">Total a cobrar</span><span class="qty-total-val" id="trabTotal">$0</span></div>
     </div>
 
-    <!-- Cómo / quién cobra -->
+    <!-- Cómo / quién cobra — se oculta en modo garantía -->
+    <div id="seccionCobro">
     <div class="field"><label>¿Cómo se cobró? (puedes dividir el pago)</label></div>
     <div id="pagosList" style="display:flex;flex-direction:column;gap:6px"></div>
     <button class="btn btn-ghost" onclick="addPagoRow()" style="align-self:flex-start">+ Agregar forma de pago</button>
     <div class="qty-block" style="margin-top:2px">
       <div class="qty-actual-row"><span class="qty-actual-lbl">Suma de pagos</span><span class="qty-actual-val" id="pagosSuma">$0</span></div>
       <div class="qty-actual-row" id="pagosDifRow" style="display:none"><span class="qty-actual-lbl" style="color:var(--red)">Falta / sobra</span><span class="qty-actual-val" id="pagosDif" style="color:var(--red)">$0</span></div>
+    </div>
     </div>
 
     <!-- Pago a técnico (manual con sugerencia) — oculto en modo técnico -->
@@ -3708,6 +3711,7 @@ function refreshCuadrillaSelect(){
 function openTrabajoModal(){
   editandoTrabajoId=null;
   modoTecnicoCaptura=false;tecCapturaUid=null;
+  modoGarantia=false;
   aplicarModoTecnicoUI(false);
   document.getElementById('trabModalTitle').textContent='➕ Nuevo trabajo';
   document.getElementById('trabFecha').value=fmtFecha(new Date());
@@ -3740,9 +3744,38 @@ function closeTrabModal(){
   desgloseItems=[];
   pagosItems=[];
   guardandoTrabajo=false;
-  try{aplicarModoTecnicoUI(false);document.getElementById('trabCuadrilla').disabled=false;}catch(e){}
+  modoGarantia=false;
+  try{const btn=document.getElementById('btnGarantia');if(btn){btn.style.background='rgba(34,197,94,.15)';btn.style.color='';btn.textContent='🛡️ Garantía';}const av=document.getElementById('garantiaAviso');if(av)av.style.display='none';const sc=document.getElementById('seccionCobro');if(sc)sc.style.display='';aplicarModoTecnicoUI(false);document.getElementById('trabCuadrilla').disabled=false;}catch(e){}
 }
 function closeTrabModalBg(e){if(e.target===document.getElementById('modalTrabajo'))closeTrabModal();}
+
+// ── MODO GARANTÍA / REGRESO ──
+let modoGarantia=false;
+
+function activarModoGarantia(){
+  modoGarantia=!modoGarantia;
+  const btn=document.getElementById('btnGarantia');
+  if(modoGarantia){
+    btn.style.background='rgba(34,197,94,.4)';btn.style.color='#fff';
+    btn.textContent='🛡️ Garantía ✓ (activa)';
+    // ocultar campos de cobro (formas de pago) pero NO el desglose
+    document.getElementById('seccionCobro').style.display='none';
+    document.getElementById('rowPagoAtras').style.display='none';
+    // mostrar aviso
+    let av=document.getElementById('garantiaAviso');
+    if(!av){av=document.createElement('div');av.id='garantiaAviso';av.style.cssText='background:rgba(34,197,94,.12);border:1px solid var(--green);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--green);margin-bottom:8px';
+    av.textContent='🛡️ Modo garantía activo: el trabajo se registra en $0. El material que agregues sí descuenta del técnico.';
+    const cobro=document.getElementById('seccionCobro');cobro.parentNode.insertBefore(av,cobro);}
+    av.style.display='block';
+  }else{
+    btn.style.background='rgba(34,197,94,.15)';btn.style.color='';
+    btn.textContent='🛡️ Garantía';
+    document.getElementById('seccionCobro').style.display='';
+    if(!modoTecnicoCaptura)document.getElementById('rowPagoAtras').style.display='';
+    const av=document.getElementById('garantiaAviso');if(av)av.style.display='none';
+  }
+  recalcTrabajo();
+}
 
 // ── FORMAS DE PAGO DIVIDIDAS ──
 let pagosItems=[]; // [{forma, quien, monto}]
@@ -4080,18 +4113,21 @@ async function guardarTrabajo(){
   const ayudante=document.getElementById('trabAyudante').value;
   recalcCable();
   if(!desgloseItems.length){alert('Agrega al menos un renglón');return;}
-  const {subtotal,iva,total}=recalcTrabajo();
+  let {subtotal,iva,total}=recalcTrabajo();
+  if(modoGarantia){subtotal=0;iva=0;total=0;}
   const factura=document.getElementById('trabFactura').checked;
   // Formas de pago divididas
   const pagosLimpios=pagosItems.filter(p=>(parseFloat(p.monto)||0)>0).map(p=>({forma:p.forma,quien:p.forma==='cobra_otro'?(p.quien||'').trim():'',monto:parseFloat(p.monto)||0}));
   const sumaPagos=pagosLimpios.reduce((s,p)=>s+p.monto,0);
-  if(pagosLimpios.length===0){alert('Indica cómo se cobró (al menos una forma de pago con monto)');return;}
-  if(Math.abs(total-sumaPagos)>0.5){
-    // En modo técnico el cuadre es obligatorio; para admin permite confirmar
-    if(modoTecnicoCaptura){
-      alert('La suma de los pagos ($'+sumaPagos.toLocaleString()+') no cuadra con el total ($'+total.toLocaleString()+'). Corrige antes de guardar.');return;
+  // En modo garantía el cobro es $0 y no hay formas de pago
+  if(modoGarantia){
+    pagosLimpios=[];
+  }else{
+    if(pagosLimpios.length===0){alert('Indica cómo se cobró (al menos una forma de pago con monto)');return;}
+    if(Math.abs(total-sumaPagos)>0.5){
+      if(modoTecnicoCaptura){alert('La suma de los pagos ($'+sumaPagos.toLocaleString()+') no cuadra con el total ($'+total.toLocaleString()+'). Corrige antes de guardar.');return;}
+      if(!await uiConfirm('Los pagos no cuadran con el total. ¿Guardar de todas formas?'))return;
     }
-    if(!confirm('La suma de los pagos ($'+sumaPagos.toLocaleString()+') no cuadra con el total ($'+total.toLocaleString()+'). ¿Guardar de todas formas?'))return;
   }
   // forma principal = la de mayor monto (para compatibilidad con vistas viejas)
   const principal=pagosLimpios.slice().sort((a,b)=>b.monto-a.monto)[0];
@@ -4136,7 +4172,8 @@ async function guardarTrabajo(){
     supervisor:supervisor,pago_supervisor:pagoSup,
     pago_atrasado:pagoAtras,pago_atrasado_nota:pagoAtrasNota,
     nota,usuario:modoTecnicoCaptura?tecnicoActual:(currentUser||''),
-    agenda_uid:modoTecnicoCaptura?(tecCapturaUid||''):''
+    agenda_uid:modoTecnicoCaptura?(tecCapturaUid||''):'',
+    es_garantia:modoGarantia||false
   };
   guardandoTrabajo=true; // bloquear doble guardado desde aquí
   try{
