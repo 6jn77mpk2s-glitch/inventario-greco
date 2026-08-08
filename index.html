@@ -4113,10 +4113,12 @@ function calcComisionSupervisor(cuadrilla){
 
 let guardandoTrabajo=false; // evita doble guardado (doble tap / doble submit)
 async function guardarTrabajo(){
-  if(guardandoTrabajo)return; // ya se está guardando, ignorar segundo intento
+  console.log('guardarTrabajo iniciado, guardandoTrabajo='+guardandoTrabajo+', modoGarantia='+modoGarantia);
+  if(guardandoTrabajo){showToast('Ya guardando...',true);return;}
   const fecha=document.getElementById('trabFecha').value;
   if(!fecha){alert('Selecciona la fecha');return;}
   const cuadrilla=document.getElementById('trabCuadrilla').value;
+  console.log('cuadrilla='+cuadrilla+', fecha='+fecha);
   if(!cuadrilla){alert('Selecciona la cuadrilla (técnico)');return;}
   const ayudante=document.getElementById('trabAyudante').value;
   recalcCable();
