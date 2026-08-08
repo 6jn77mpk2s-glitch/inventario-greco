@@ -3774,6 +3774,7 @@ function activarModoGarantia(){
     if(!modoTecnicoCaptura)document.getElementById('rowPagoAtras').style.display='';
     const av=document.getElementById('garantiaAviso');if(av)av.style.display='none';
   }
+  renderDesglose();
   recalcTrabajo();
 }
 
