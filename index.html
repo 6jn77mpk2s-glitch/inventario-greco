@@ -4124,7 +4124,7 @@ async function guardarTrabajo(){
   if(modoGarantia){subtotal=0;iva=0;total=0;}
   const factura=document.getElementById('trabFactura').checked;
   // Formas de pago divididas
-  const pagosLimpios=pagosItems.filter(p=>(parseFloat(p.monto)||0)>0).map(p=>({forma:p.forma,quien:p.forma==='cobra_otro'?(p.quien||'').trim():'',monto:parseFloat(p.monto)||0}));
+  let pagosLimpios=pagosItems.filter(p=>(parseFloat(p.monto)||0)>0).map(p=>({forma:p.forma,quien:p.forma==='cobra_otro'?(p.quien||'').trim():'',monto:parseFloat(p.monto)||0}));
   const sumaPagos=pagosLimpios.reduce((s,p)=>s+p.monto,0);
   // En modo garantía el cobro es $0 y no hay formas de pago
   if(modoGarantia){
