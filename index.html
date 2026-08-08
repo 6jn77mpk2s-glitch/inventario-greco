@@ -3712,6 +3712,7 @@ function openTrabajoModal(){
   editandoTrabajoId=null;
   modoTecnicoCaptura=false;tecCapturaUid=null;
   modoGarantia=false;
+  guardandoTrabajo=false; // resetear por si quedó bloqueado de un intento anterior
   aplicarModoTecnicoUI(false);
   document.getElementById('trabModalTitle').textContent='➕ Nuevo trabajo';
   document.getElementById('trabFecha').value=fmtFecha(new Date());
