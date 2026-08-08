@@ -3082,7 +3082,8 @@ function renderTecnicos(movs){
           lineC.style.display='none'; // ocultar línea total y mostrar por rollo
           rollT.forEach(r=>{
             const lineR=document.createElement('div');lineR.className='tec-line';
-            lineR.innerHTML='<span>🧵 '+(r.tipo==='viejo'?'Cable viejo':'Cable nuevo')+'</span><span class="tec-line-qty" style="color:'+(parseFloat(r.metros)<=10?'var(--red)':'var(--accent2)')+'">'+parseFloat(r.metros)+' m</span>';
+            const mR=Math.round(parseFloat(r.metros)*100)/100;
+          lineR.innerHTML='<span>🧵 '+(r.tipo==='viejo'?'Cable viejo':'Cable nuevo')+'</span><span class="tec-line-qty" style="color:'+(mR<=10?'var(--red)':'var(--accent2)')+'">'+mR+' m</span>';
             det.appendChild(lineR);
           });
         }
@@ -3931,7 +3932,7 @@ async function agregarCable(){
     const rollos=await getRollos(cuad);
     if(rollos.length>=2){
       const rOpts=rollos.map(r=>({
-        label:(r.tipo==='viejo'?'📦 Rollo viejo':'🆕 Rollo nuevo')+' — '+parseFloat(r.metros)+'m disponibles',
+        label:(r.tipo==='viejo'?'📦 Rollo viejo':'🆕 Rollo nuevo')+' — '+(Math.round(parseFloat(r.metros)*100)/100)+'m disponibles',
         value:r.tipo
       }));
       rolloTipo=await uiChoose('¿De cuál rollo se usaron los '+metros+'m?',rOpts,'');
@@ -4742,7 +4743,7 @@ async function renderRepoEstandar(){
     // ── Sección de CABLE con sistema de rollos ──
     try{ cableData=await api('cable_tecnicos?select=*'); }catch(e){ cableData=cableData||[]; }
     const cab=cableData.find(r=>r.tecnico===repoTecnicoActual);
-    const metros=parseFloat(cab?cab.metros:0)||0;
+    const metros=Math.round((parseFloat(cab?cab.metros:0)||0)*100)/100;
     const rollos=await cargarRollos(repoTecnicoActual);
     const cabBox=document.createElement('div');
     cabBox.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:10px';
@@ -4753,8 +4754,9 @@ async function renderRepoEstandar(){
     // Mostrar rollos individuales si hay más de uno
     if(rollos.length>1){
       rollos.forEach(r=>{
+        const mRol=Math.round(parseFloat(r.metros)*100)/100;
         const rl=document.createElement('div');rl.style.cssText='display:flex;justify-content:space-between;padding:5px 8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:12px';
-        rl.innerHTML='<span>'+(r.tipo==='viejo'?'📦 Rollo viejo':'🆕 Rollo nuevo')+'</span><span style="font-family:var(--mono);color:'+(parseFloat(r.metros)<=10?'var(--red)':'var(--accent2)')+'">'+parseFloat(r.metros)+'m</span>';
+        rl.innerHTML='<span>'+(r.tipo==='viejo'?'📦 Rollo viejo':'🆕 Rollo nuevo')+'</span><span style="font-family:var(--mono);color:'+(mRol<=10?'var(--red)':'var(--accent2)')+'">'+mRol+'m</span>';
         cabBox.appendChild(rl);
       });
     }
@@ -6116,24 +6118,70 @@ async function ajustarCableManual(tecnico){
 
 // 2) Pasar cable de una cuadrilla a otra
 async function pasarCable(origen){
-  const row=cableData.find(r=>r.tecnico===origen);
-  const disp=parseFloat(row?row.metros:0)||0;
-  if(disp<=0){alert(origen+' no tiene cable para pasar');return;}
+  // Primero elegir qué rollo pasar (viejo o nuevo), luego a quién
+  const rollos=await cargarRollos(origen);
+  const fmtM=m=>Math.round(parseFloat(m)*100)/100; // limpiar punto flotante
+
+  let rolloSel=null;
+  let metrosRollo=0;
+
+  if(rollos.length>=2){
+    // elegir rollo
+    const opts=rollos.map(r=>({
+      label:(r.tipo==='viejo'?'📦 Rollo viejo':'🆕 Rollo nuevo')+' — '+fmtM(r.metros)+'m (se pasa completo)',
+      value:r.tipo
+    }));
+    const tipo=await uiChoose('¿Qué rollo pasas?',opts,'Se pasa el rollo completo a otra cuadrilla');
+    if(!tipo)return;
+    rolloSel=rollos.find(r=>r.tipo===tipo);
+    metrosRollo=fmtM(rolloSel.metros);
+  }else if(rollos.length===1){
+    rolloSel=rollos[0];
+    metrosRollo=fmtM(rolloSel.metros);
+  }else{
+    // sin rollos registrados: usar total de cable_tecnicos
+    const row=cableData.find(r=>r.tecnico===origen);
+    metrosRollo=fmtM(parseFloat(row?row.metros:0)||0);
+    if(metrosRollo<=0){showToast(origen+' no tiene cable para pasar',true);return;}
+  }
+
+  if(metrosRollo<=0){showToast('Ese rollo no tiene metros',true);return;}
+
   const otros=cuadrillasActivas().filter(t=>t!==origen);
-  if(!otros.length){alert('No hay otra cuadrilla');return;}
-  const destino=await uiChoose('¿A quién le pasas cable?',otros.map(t=>({label:'👷 '+t,value:t})),'Desde '+origen+' ('+disp+'m disponibles)');
+  if(!otros.length){showToast('No hay otra cuadrilla',true);return;}
+  const destino=await uiChoose('¿A quién le pasas el rollo?',otros.map(t=>({label:'👷 '+t,value:t})),'Se pasan '+metrosRollo+'m completos');
   if(!destino)return;
-  const v=await uiInput('¿Cuántos metros pasas a '+destino+'?',{placeholder:'ej. 5'});
-  if(v===null)return;
-  const m=Math.max(0,parseFloat(v)||0);
-  if(m<=0)return;
-  if(m>disp){alert('Solo hay '+disp+'m disponibles');return;}
+
+  if(!await uiConfirm('¿Pasar '+metrosRollo+'m a '+destino+'?',{sub:'Se quitará de '+origen+' y se sumará a '+destino+' como "rollo viejo"',ok:'↔ Pasar'}))return;
+
+  // 1) Quitar rollo del origen
+  if(rolloSel&&rolloSel.id){
+    // borrar el rollo del origen (ya se pasó completo)
+    try{await api('cable_rollos?id=eq.'+rolloSel.id,{method:'DELETE'});}catch(e){}
+    rollosCache[origen]=undefined;
+  }
+  // actualizar total origen
+  const rowO=cableData.find(r=>r.tecnico===origen);
+  const totalO=fmtM((parseFloat(rowO?rowO.metros:0)||0)-metrosRollo);
+  await setCableMetros(origen,Math.max(0,totalO));
+
+  // 2) Sumar al destino como "rollo viejo" (los sobrantes que llegan son el viejo del otro)
+  const rollosD=await cargarRollos(destino);
+  const viejoD=rollosD.find(r=>r.tipo==='viejo');
+  if(viejoD){
+    const nuevosD=fmtM(parseFloat(viejoD.metros)+metrosRollo);
+    await api('cable_rollos?id=eq.'+viejoD.id,{method:'PATCH',body:JSON.stringify({metros:nuevosD})});
+  }else{
+    await api('cable_rollos',{method:'POST',body:JSON.stringify({tecnico:destino,tipo:'viejo',metros:metrosRollo,metros_iniciales:metrosRollo})});
+  }
+  rollosCache[destino]=undefined;
+  // actualizar total destino
   const rowD=cableData.find(r=>r.tecnico===destino);
-  const dispD=parseFloat(rowD?rowD.metros:0)||0;
-  await setCableMetros(origen,disp-m);
-  await setCableMetros(destino,dispD+m);
-  await logCable('traspaso',origen,destino,m,origen+' → '+destino);
-  showToast('Pasados '+m+'m de '+origen+' a '+destino);
+  const totalD=fmtM((parseFloat(rowD?rowD.metros:0)||0)+metrosRollo);
+  await setCableMetros(destino,totalD);
+
+  await logCable('traspaso',origen,destino,metrosRollo,origen+' → '+destino+' (rollo '+(rolloSel?rolloSel.tipo:'')+'completo)');
+  showToast('Pasados '+metrosRollo+'m a '+destino+' ✓');
 }
 
 // 3) Conteo presencial: muestra esperado vs real y registra la diferencia
