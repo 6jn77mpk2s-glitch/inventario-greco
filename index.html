@@ -4010,11 +4010,16 @@ function recalcCable(){
   desgloseItems.forEach(d=>{
     if(d.tipo==='cable'){
       const metros=limpiarNum(d.metros);
+      // En modo garantía el cable es $0 siempre
+      if(modoGarantia){
+        d.metrosCobrables=0;d.monto=0;
+        d.nombreVisible='Cable '+metros+'m (garantía — sin cobro)';
+        return;
+      }
       const cobrables=limpiarNum(Math.max(0,metros-gratis));
       d.metrosCobrables=cobrables;
       const bruto=cobrables*PRECIOS_MATERIAL.cable_metro;
       const redondeado=redondear50(bruto);
-      // si el usuario puso monto manual, respetarlo
       d.monto=(d.montoManual!=null)?d.montoManual:redondeado;
       const sufijo=(d.montoManual!=null&&d.montoManual!==redondeado)?' · monto ajustado':'';
       d.nombreVisible='Cable '+metros+'m (cobra '+cobrables+'m, '+gratis+' gratis)'+sufijo;
@@ -4037,7 +4042,7 @@ function renderDesglose(){
       (d.descuentaSaldo?'<div style="font-size:9px;color:var(--orange)">descuenta '+d.descuentaCant+' del técnico</div>':'')+
       (d.descuentaCableMetros?'<div style="font-size:9px;color:var(--orange)">descuenta '+d.descuentaCableMetros+'m al técnico</div>':'')+
       '</div>'+
-      '<div style="font-family:var(--mono);font-size:14px;color:var(--green)">$'+(d.monto||0).toLocaleString()+'</div>';
+      '<div style="font-family:var(--mono);font-size:14px;color:'+(modoGarantia?'var(--muted)':'var(--green)')+'">$'+(modoGarantia?0:(d.monto||0)).toLocaleString()+'</div>';
     const del=document.createElement('button');del.textContent='×';del.style.cssText='width:30px;height:30px;border:1px solid rgba(239,68,68,.3);border-radius:6px;background:transparent;color:var(--red);cursor:pointer;font-size:18px';
     del.onclick=()=>{desgloseItems.splice(idx,1);renderDesglose();recalcTrabajo();};
     row.appendChild(del);
@@ -4047,14 +4052,15 @@ function renderDesglose(){
 
 function recalcTrabajo(){
   recalcCable();
-  const subtotal=desgloseItems.reduce((s,x)=>s+(x.monto||0),0);
+  const subtotalReal=desgloseItems.reduce((s,x)=>s+(x.monto||0),0);
+  const subtotal=modoGarantia?0:subtotalReal;
   const factura=document.getElementById('trabFactura').checked;
   const iva=factura?subtotal*0.08:0;
   const total=subtotal+iva;
   document.getElementById('trabSubtotal').textContent='$'+subtotal.toLocaleString();
   document.getElementById('trabIvaRow').style.display=factura?'flex':'none';
   document.getElementById('trabIva').textContent='$'+iva.toLocaleString(undefined,{maximumFractionDigits:2});
-  document.getElementById('trabTotal').textContent='$'+total.toLocaleString(undefined,{maximumFractionDigits:2});
+  document.getElementById('trabTotal').textContent=(modoGarantia?'$0 (garantía)':'$'+total.toLocaleString(undefined,{maximumFractionDigits:2}));
   // Sugerencia de pago a técnico y ayudante según tarifas
   const cuad=document.getElementById('trabCuadrilla').value;
   const grupo=grupoDe(cuad);
