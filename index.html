@@ -4139,8 +4139,8 @@ async function guardarTrabajo(){
   }
   // forma principal = la de mayor monto (para compatibilidad con vistas viejas)
   const principal=pagosLimpios.slice().sort((a,b)=>b.monto-a.monto)[0];
-  const forma=principal.forma;
-  const quienCobra=principal.forma==='cobra_otro'?principal.quien:'';
+  const forma=principal?principal.forma:(modoGarantia?'garantia':'efectivo');
+  const quienCobra=principal&&principal.forma==='cobra_otro'?principal.quien:'';
   let pagoTec=parseFloat(document.getElementById('trabPagoTec').value)||0;
   let pagoAyu=parseFloat(document.getElementById('trabPagoAyu').value)||0;
   // En modo técnico los campos están ocultos: calcular el pago siempre con las tarifas
