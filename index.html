@@ -1262,7 +1262,7 @@ function switchSupTab(t){
     document.getElementById('supTab'+s.charAt(0).toUpperCase()+s.slice(1)).className='tab'+(t===s?' active':'');
   });
   if(t==='pagos')renderSupPagos();
-  if(t==='corte')renderSupCorte();
+  if(t==='corte'){renderSupCorte().catch(e=>console.error(e));}
   if(t==='material')loadSupMaterial();
 }
 
@@ -1362,34 +1362,136 @@ function renderSupPagos(){
   });
 }
 
-function renderSupCorte(){
+async function renderSupCorte(){
   const list=document.getElementById('supListCorte');
+  list.innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  const semana=supGetSemana();
+  const supervisor=supervisorActual||currentUser||'';
+
+  // Cargar gastos, feria y entregas de esta semana
+  let gastos=[],feria=[],entregas=[];
+  try{ gastos=await api('sup_gastos?select=*&semana=eq.'+semana+'&supervisor=eq.'+encodeURIComponent(supervisor)); }catch(e){}
+  try{ feria=await api('sup_feria?select=*&semana=eq.'+semana+'&supervisor=eq.'+encodeURIComponent(supervisor)); }catch(e){}
+  try{ entregas=await api('sup_entregas?select=*&semana=eq.'+semana+'&supervisor=eq.'+encodeURIComponent(supervisor)); }catch(e){}
+
   list.innerHTML='';
-  if(!supTrabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.</div>';return;}
+
+  // ── Cobrado total y forma de cobro ──
   const cobrado=supTrabajos.reduce((s,t)=>s+(parseFloat(t.cobrado||t.total)||0),0);
   const pagos=supTrabajos.reduce((s,t)=>s+(parseFloat(t.pago_tecnico)||0)+(parseFloat(t.pago_ayudante)||0)+(parseFloat(t.pago_supervisor)||0),0);
-  const utilidad=cobrado-pagos;
   const porForma={};
   supTrabajos.forEach(t=>{
     let ps=[];try{ps=JSON.parse(t.pagos||'[]');}catch(e){}
-    if(ps.length){ps.forEach(p=>{const f=p.forma||'efectivo';porForma[f]=(porForma[f]||0)+(parseFloat(p.monto)||0);});}
+    if(ps.length)ps.forEach(p=>{const f=p.forma||'efectivo';porForma[f]=(porForma[f]||0)+(parseFloat(p.monto)||0);});
     else{const f=t.forma_pago||'efectivo';porForma[f]=(porForma[f]||0)+(parseFloat(t.cobrado||t.total)||0);}
   });
-  const fmtForma={efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',tarjeta:'💳 Tarjeta',local:'🏪 Local'};
-  [{lbl:'Cobrado total',val:cobrado,col:'var(--green)'},{lbl:'Pagos (tec+ayu+sup)',val:pagos,col:'var(--orange)'},{lbl:'Utilidad operativa',val:utilidad,col:'var(--accent2)'}].forEach(r=>{
+  const efectivoEntro=porForma['efectivo']||0;
+  const totGastos=gastos.reduce((s,g)=>s+(parseFloat(g.monto)||0),0);
+  const totFeria=feria.filter(f=>!f.pagada).reduce((s,f)=>s+(parseFloat(f.monto)||0),0);
+  const totEntregas=entregas.reduce((s,e)=>s+(parseFloat(e.monto)||0),0);
+  const disponible=efectivoEntro-pagos-totGastos-totFeria-totEntregas;
+  const fmtForma={efectivo:'💵 Efectivo',transferencia:'🏦 Transferencia',tarjeta:'💳 Tarjeta oficina',local:'🏪 Local'};
+
+  // Resumen cobrado
+  [{lbl:'Cobrado total',val:cobrado,col:'var(--green)'},{lbl:'Pagos (tec+ayu+sup)',val:pagos,col:'var(--orange)'}].forEach(r=>{
     const row=document.createElement('div');row.className='item';row.style.cssText='padding:12px 14px;margin-bottom:6px';
     row.innerHTML='<div style="display:flex;justify-content:space-between"><span style="font-size:13px;font-weight:700">'+r.lbl+'</span><span style="font-family:var(--mono);font-size:18px;font-weight:700;color:'+r.col+'">$'+r.val.toLocaleString()+'</span></div>';
     list.appendChild(row);
   });
-  // Por forma de cobro
-  const grp=document.createElement('div');grp.className='marca-group';
-  const h=document.createElement('div');h.className='marca-header';h.style.color='var(--muted)';h.textContent='CÓMO SE COBRÓ';grp.appendChild(h);
+  // Cómo se cobró
+  const grpF=document.createElement('div');grpF.className='marca-group';
+  const hF=document.createElement('div');hF.className='marca-header';hF.style.color='var(--muted)';hF.textContent='CÓMO SE COBRÓ';grpF.appendChild(hF);
   Object.keys(porForma).forEach(f=>{
     const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:8px 10px;background:var(--card);border-radius:8px;margin-bottom:4px';
     row.innerHTML='<span style="font-size:13px">'+(fmtForma[f]||f)+'</span><span style="font-family:var(--mono);color:var(--green)">$'+(porForma[f]||0).toLocaleString()+'</span>';
-    grp.appendChild(row);
+    grpF.appendChild(row);
   });
-  list.appendChild(grp);
+  list.appendChild(grpF);
+
+  // ── SECCIÓN EFECTIVO DISPONIBLE ──
+  const grpEf=document.createElement('div');grpEf.className='marca-group';grpEf.style.marginTop='14px';
+  const hEf=document.createElement('div');hEf.className='marca-header';hEf.style.color='var(--green)';hEf.textContent='💵 EFECTIVO DISPONIBLE';grpEf.appendChild(hEf);
+  [[('Entró en efectivo'),efectivoEntro,'var(--green)'],[('− Pagos técnicos/ayu/sup'),pagos,'var(--orange)'],[('− Gasolina y gastos'),totGastos,'var(--orange)'],[('− Feria pendiente'),totFeria,'var(--orange)'],[('− Ya entregado al jefe'),totEntregas,'var(--muted)']].forEach(([lbl,val,col])=>{
+    if(!val)return;
+    const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:8px 10px;background:var(--card);border-radius:8px;margin-bottom:4px';
+    row.innerHTML='<span style="font-size:13px">'+lbl+'</span><span style="font-family:var(--mono);color:'+col+'">$'+val.toLocaleString()+'</span>';
+    grpEf.appendChild(row);
+  });
+  const rowDisp=document.createElement('div');rowDisp.style.cssText='display:flex;justify-content:space-between;padding:12px 10px;background:var(--card);border-radius:8px;border:1px solid var(--border)';
+  rowDisp.innerHTML='<span style="font-size:14px;font-weight:700">Disponible para el jefe</span><span style="font-family:var(--mono);font-size:20px;font-weight:700;color:'+(disponible<0?'var(--red)':'var(--green)')+'">$'+disponible.toLocaleString()+'</span>';
+  grpEf.appendChild(rowDisp);
+  if(disponible>0){
+    const bEnt=document.createElement('button');bEnt.className='btn btn-success';bEnt.textContent='✓ Ya entregué al jefe ($'+disponible.toLocaleString()+')';bEnt.style.cssText='width:100%;margin-top:8px';
+    bEnt.onclick=async()=>{
+      if(!await uiConfirm('¿Ya entregaste $'+disponible.toLocaleString()+' al jefe?',{ok:'✓ Sí, entregué'}))return;
+      await api('sup_entregas',{method:'POST',body:JSON.stringify({semana,supervisor,monto:disponible,fecha:new Date().toISOString()})});
+      renderSupCorte();
+    };
+    grpEf.appendChild(bEnt);
+  }
+  list.appendChild(grpEf);
+
+  // ── GASOLINA Y GASTOS ──
+  const grpG=document.createElement('div');grpG.className='marca-group';grpG.style.marginTop='14px';
+  const hG=document.createElement('div');hG.className='marca-header';hG.style.color='var(--orange)';hG.textContent='⛽ GASOLINA Y GASTOS';grpG.appendChild(hG);
+  if(!gastos.length){const e=document.createElement('div');e.style.cssText='font-size:12px;color:var(--muted);padding:6px 4px';e.textContent='Sin gastos esta semana.';grpG.appendChild(e);}
+  gastos.forEach(g=>{
+    const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--card);border-radius:8px;margin-bottom:4px';
+    const d=new Date(g.fecha);const fch=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+    row.innerHTML='<div><div style="font-size:12px;font-weight:600">'+esc(g.concepto||'Gasto')+'</div><div style="font-size:10px;color:var(--muted)">'+fch+'</div></div><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(g.monto)||0).toLocaleString()+'</span><button style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer" onclick="delSupGasto('+g.id+')">✕</button></div>';
+    grpG.appendChild(row);
+  });
+  if(totGastos>0){const tot=document.createElement('div');tot.style.cssText='display:flex;justify-content:space-between;padding:6px 10px;font-size:12px;color:var(--orange)';tot.innerHTML='<span>Total gastos</span><span>$'+totGastos.toLocaleString()+'</span>';grpG.appendChild(tot);}
+  const bG=document.createElement('button');bG.className='btn btn-ghost';bG.textContent='+ Agregar gasto';bG.style.cssText='width:100%;margin-top:6px;font-size:13px';
+  bG.onclick=async()=>{
+    const concepto=await uiInput('¿Qué gasto?',{tipo:'texto',placeholder:'ej. Gasolina David, almuerzo...'});if(concepto===null)return;
+    const monto=await uiInput('¿Cuánto?',{tipo:'numero',placeholder:'ej. 500'});if(monto===null)return;
+    await api('sup_gastos',{method:'POST',body:JSON.stringify({semana,supervisor,concepto,monto:parseFloat(monto)||0,fecha:new Date().toISOString()})});
+    renderSupCorte();
+  };
+  grpG.appendChild(bG);
+  list.appendChild(grpG);
+
+  // ── FERIA (cambio pendiente) ──
+  const grpFe=document.createElement('div');grpFe.className='marca-group';grpFe.style.marginTop='14px';
+  const hFe=document.createElement('div');hFe.className='marca-header';hFe.style.color='var(--accent2)';hFe.textContent='🪙 FERIA (CAMBIO POR DEVOLVER)';grpFe.appendChild(hFe);
+  const feriaActiva=feria.filter(f=>!f.pagada);
+  if(!feria.length){const e=document.createElement('div');e.style.cssText='font-size:12px;color:var(--muted);padding:6px 4px';e.textContent='Sin feria pendiente.';grpFe.appendChild(e);}
+  feria.forEach(f=>{
+    const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--card);border-radius:8px;margin-bottom:4px'+(f.pagada?';opacity:.5':'');
+    const d=new Date(f.fecha);const fch=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+    row.innerHTML='<div><div style="font-size:12px;font-weight:600">'+esc(f.a_quien||'')+(f.pagada?' ✓ (devuelta)':'')+'</div><div style="font-size:10px;color:var(--muted)">'+fch+(f.nota?' · '+esc(f.nota):'')+'</div></div><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);color:var(--accent2)">$'+(parseFloat(f.monto)||0).toLocaleString()+'</span>'+(!f.pagada?'<button style="font-size:11px;padding:4px 8px;background:var(--green);color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="pagarFeria('+f.id+')">Pagada</button>':'')+'</div>';
+    grpFe.appendChild(row);
+  });
+  if(feriaActiva.length){const tot=document.createElement('div');tot.style.cssText='display:flex;justify-content:space-between;padding:6px 10px;font-size:12px;color:var(--accent2)';tot.innerHTML='<span>Total feria pendiente</span><span>$'+totFeria.toLocaleString()+'</span>';grpFe.appendChild(tot);}
+  const bFe=document.createElement('button');bFe.className='btn btn-ghost';bFe.textContent='+ Registrar feria';bFe.style.cssText='width:100%;margin-top:6px;font-size:13px';
+  bFe.onclick=async()=>{
+    const quien=await uiInput('¿A quién le debes feria?',{tipo:'texto',placeholder:'ej. David'});if(quien===null)return;
+    const monto=await uiInput('¿Cuánto?',{tipo:'numero',placeholder:'ej. 60'});if(monto===null)return;
+    const nota=await uiInput('Nota (opcional)',{tipo:'texto',placeholder:'ej. trabajo de las 2pm'});
+    await api('sup_feria',{method:'POST',body:JSON.stringify({semana,supervisor,a_quien:quien,monto:parseFloat(monto)||0,nota:nota||'',pagada:false,fecha:new Date().toISOString()})});
+    renderSupCorte();
+  };
+  grpFe.appendChild(bFe);
+  list.appendChild(grpFe);
+}
+
+// Semana actual del supervisor (ISO date del lunes)
+function supGetSemana(){
+  const d=new Date();d.setHours(0,0,0,0);
+  const day=(d.getDay()+6)%7;d.setDate(d.getDate()-day+supSemanaOffset*7);
+  return fmtFecha(d);
+}
+
+async function delSupGasto(id){
+  if(!await uiConfirm('¿Eliminar este gasto?',{ok:'Eliminar'}))return;
+  await api('sup_gastos?id=eq.'+id,{method:'DELETE'});renderSupCorte();
+}
+
+async function pagarFeria(id){
+  if(!await uiConfirm('¿Marcar esta feria como devuelta?',{ok:'✓ Sí, ya la pagué'}))return;
+  await api('sup_feria?id=eq.'+id,{method:'PATCH',body:JSON.stringify({pagada:true})});
+  renderSupCorte();
 }
 
 async function loadSupMaterial(){
