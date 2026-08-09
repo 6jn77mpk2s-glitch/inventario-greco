@@ -1330,35 +1330,133 @@ function renderSupSemana(){
   });
 }
 
-let supPagosModo='semana'; // 'semana' o 'dia'
+let supPagosModo='semana'; // 'semana', 'dia' o 'resumen'
+let supDiasPagados=[]; // fechas (YYYY-MM-DD) ya marcadas como pagadas
 
 function renderSupPagos(){
   const list=document.getElementById('supListPagos');
   list.innerHTML='';
   if(!supTrabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.</div>';return;}
 
-  // Selector Por día / Por semana
-  const sel=document.createElement('div');sel.style.cssText='display:flex;gap:6px;margin-bottom:12px';
-  ['semana','dia'].forEach(modo=>{
+  // Selector Por semana / Por día / Resumen
+  const sel=document.createElement('div');sel.style.cssText='display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap';
+  [['semana','📅 Por semana'],['dia','📆 Por día'],['resumen','💰 Resumen']].forEach(([modo,lbl])=>{
     const b=document.createElement('button');
     b.className='btn '+(supPagosModo===modo?'btn-primary':'btn-ghost');
-    b.textContent=modo==='semana'?'📅 Por semana':'📆 Por día';
-    b.style.cssText='flex:1;font-size:13px';
+    b.textContent=lbl;b.style.cssText='flex:1;font-size:12px';
     b.onclick=()=>{supPagosModo=modo;renderSupPagos();};
     sel.appendChild(b);
   });
   list.appendChild(sel);
 
-  // Comisión total siempre arriba
-  const totSup=supTrabajos.reduce((s,t)=>s+(parseFloat(t.pago_supervisor)||0),0);
-  const head=document.createElement('div');head.className='item';head.style.cssText='padding:14px;margin-bottom:10px;border-left:3px solid #c084fc';
-  head.innerHTML='<div style="font-size:12px;color:var(--muted)">Mi comisión total esta semana</div><div style="font-family:var(--mono);font-size:22px;font-weight:700;color:#c084fc">$'+totSup.toLocaleString()+'</div>';
-  list.appendChild(head);
+  // Comisión total siempre arriba (excepto en resumen donde va diferente)
+  if(supPagosModo!=='resumen'){
+    const totSup=supTrabajos.reduce((s,t)=>s+(parseFloat(t.pago_supervisor)||0),0);
+    const head=document.createElement('div');head.className='item';head.style.cssText='padding:14px;margin-bottom:10px;border-left:3px solid #c084fc';
+    head.innerHTML='<div style="font-size:12px;color:var(--muted)">Mi comisión total esta semana</div><div style="font-family:var(--mono);font-size:22px;font-weight:700;color:#c084fc">$'+totSup.toLocaleString()+'</div>';
+    list.appendChild(head);
+  }
 
-  if(supPagosModo==='semana'){
-    renderSupPagosPorSemana(list);
-  }else{
-    renderSupPagosPorDia(list);
+  if(supPagosModo==='semana') renderSupPagosPorSemana(list);
+  else if(supPagosModo==='dia') renderSupPagosPorDia(list);
+  else renderSupPagosResumen(list);
+}
+
+function renderSupPagosResumen(list){
+  // Trabajos pendientes de pago (excluyendo días ya marcados como pagados)
+  const pendientes=supTrabajos.filter(t=>!supDiasPagados.includes(t.fecha));
+  const pagados=supTrabajos.filter(t=>supDiasPagados.includes(t.fecha));
+
+  // Días disponibles para marcar como pagados (que aún no estén marcados)
+  const diasPend=[...new Set(supTrabajos.map(t=>t.fecha))].filter(f=>!supDiasPagados.includes(f)).sort();
+  const diasYaPag=[...new Set(pagados.map(t=>t.fecha))].sort();
+
+  // Botón marcar días pagados
+  if(diasPend.length){
+    const bMark=document.createElement('button');
+    bMark.className='btn btn-ghost';bMark.textContent='✓ Marcar días como pagados';
+    bMark.style.cssText='width:100%;margin-bottom:12px;font-size:13px';
+    bMark.onclick=async()=>{
+      const dias=diasPend.map(f=>{const d=new Date(f+'T12:00:00');const dias2=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];return {label:dias2[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'),value:f};});
+      // multi-select simulado: uiChoose uno a la vez no funciona para multi, usamos confirm secuencial
+      const elegido=await uiChoose('¿Qué día ya pagaste?',dias,'Se marcará como pagado y dejará de aparecer en pendientes');
+      if(!elegido)return;
+      if(!supDiasPagados.includes(elegido))supDiasPagados.push(elegido);
+      renderSupPagos();
+    };
+    list.appendChild(bMark);
+  }
+
+  // Si hay días ya pagados, botón para desmarcar
+  if(diasYaPag.length){
+    const bUnmark=document.createElement('button');
+    bUnmark.className='btn btn-ghost';bUnmark.textContent='↶ Quitar día pagado';
+    bUnmark.style.cssText='width:100%;margin-bottom:12px;font-size:12px;color:var(--muted)';
+    bUnmark.onclick=async()=>{
+      const dias=diasYaPag.map(f=>{const d=new Date(f+'T12:00:00');const dias2=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];return {label:dias2[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' (pagado)',value:f};});
+      const elegido=await uiChoose('¿Qué día quieres desmarcar?',dias);
+      if(!elegido)return;
+      supDiasPagados=supDiasPagados.filter(d=>d!==elegido);
+      renderSupPagos();
+    };
+    list.appendChild(bUnmark);
+  }
+
+  // TÉCNICOS — total pendiente por técnico
+  const tecs={};
+  pendientes.forEach(t=>{
+    const cu=t.cuadrilla||'?';
+    tecs[cu]=(tecs[cu]||0)+(parseFloat(t.pago_tecnico)||0);
+  });
+  if(Object.keys(tecs).length){
+    const grpT=document.createElement('div');grpT.className='marca-group';
+    const hT=document.createElement('div');hT.className='marca-header';hT.style.color='var(--green)';hT.textContent='👷 TÉCNICOS — pendiente de pagar';grpT.appendChild(hT);
+    Object.keys(tecs).forEach(nombre=>{
+      if(!tecs[nombre])return;
+      const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:10px 12px;background:var(--card);border-radius:8px;margin-bottom:4px';
+      row.innerHTML='<span style="font-size:14px;font-weight:600">'+esc(nombre)+'</span><span style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">$'+tecs[nombre].toLocaleString()+'</span>';
+      grpT.appendChild(row);
+    });
+    list.appendChild(grpT);
+  }
+
+  // AYUDANTES — total pendiente por ayudante (con nombre)
+  const ayus={};
+  pendientes.forEach(t=>{
+    const ayn=t.ayudante_nombre||t.ayudante||'';
+    const ayp=parseFloat(t.pago_ayudante)||0;
+    if(ayn&&ayp>0)ayus[ayn]=(ayus[ayn]||0)+ayp;
+  });
+  if(Object.keys(ayus).length){
+    const grpA=document.createElement('div');grpA.className='marca-group';grpA.style.marginTop='10px';
+    const hA=document.createElement('div');hA.className='marca-header';hA.style.color='var(--accent2)';hA.textContent='🤝 AYUDANTES — pendiente de pagar';grpA.appendChild(hA);
+    Object.keys(ayus).forEach(nombre=>{
+      if(!ayus[nombre])return;
+      const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:10px 12px;background:var(--card);border-radius:8px;margin-bottom:4px';
+      row.innerHTML='<span style="font-size:14px;font-weight:600">'+esc(nombre)+'</span><span style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--accent2)">$'+ayus[nombre].toLocaleString()+'</span>';
+      grpA.appendChild(row);
+    });
+    list.appendChild(grpA);
+  }
+
+  // Si ya está todo pagado
+  if(!Object.keys(tecs).length&&!Object.keys(ayus).length){
+    const ok=document.createElement('div');ok.style.cssText='text-align:center;padding:30px;font-size:14px;color:var(--green)';
+    ok.textContent='✅ Todo pagado esta semana';
+    list.appendChild(ok);
+  }
+
+  // Resumen de días ya pagados
+  if(diasYaPag.length){
+    const grpP=document.createElement('div');grpP.className='marca-group';grpP.style.cssText='margin-top:14px;opacity:.6';
+    const hP=document.createElement('div');hP.className='marca-header';hP.style.color='var(--muted)';hP.textContent='✓ DÍAS YA PAGADOS';grpP.appendChild(hP);
+    diasYaPag.forEach(f=>{
+      const d=new Date(f+'T12:00:00');const dias2=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+      const row=document.createElement('div');row.style.cssText='font-size:12px;color:var(--muted);padding:4px 10px';
+      row.textContent=dias2[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+      grpP.appendChild(row);
+    });
+    list.appendChild(grpP);
   }
 }
 
@@ -4113,12 +4211,10 @@ function calcComisionSupervisor(cuadrilla){
 
 let guardandoTrabajo=false; // evita doble guardado (doble tap / doble submit)
 async function guardarTrabajo(){
-  console.log('guardarTrabajo iniciado, guardandoTrabajo='+guardandoTrabajo+', modoGarantia='+modoGarantia);
-  if(guardandoTrabajo){showToast('Ya guardando...',true);return;}
+  if(guardandoTrabajo)return;
   const fecha=document.getElementById('trabFecha').value;
   if(!fecha){alert('Selecciona la fecha');return;}
   const cuadrilla=document.getElementById('trabCuadrilla').value;
-  console.log('cuadrilla='+cuadrilla+', fecha='+fecha);
   if(!cuadrilla){alert('Selecciona la cuadrilla (técnico)');return;}
   const ayudante=document.getElementById('trabAyudante').value;
   recalcCable();
