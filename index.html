@@ -1331,7 +1331,6 @@ function renderSupSemana(){
 }
 
 let supPagosModo='semana'; // 'semana', 'dia' o 'resumen'
-let supDiasPagados=[]; // fechas (YYYY-MM-DD) ya marcadas como pagadas
 
 function renderSupPagos(){
   const list=document.getElementById('supListPagos');
@@ -1359,104 +1358,141 @@ function renderSupPagos(){
 
   if(supPagosModo==='semana') renderSupPagosPorSemana(list);
   else if(supPagosModo==='dia') renderSupPagosPorDia(list);
-  else renderSupPagosResumen(list);
+  else renderSupPagosResumen(list).catch(e=>console.error(e));
 }
 
-function renderSupPagosResumen(list){
-  // Trabajos pendientes de pago (excluyendo días ya marcados como pagados)
-  const pendientes=supTrabajos.filter(t=>!supDiasPagados.includes(t.fecha));
-  const pagados=supTrabajos.filter(t=>supDiasPagados.includes(t.fecha));
+let supPagosRegistros=[]; // cache de pagos registrados en BD para esta semana+supervisor
 
-  // Días disponibles para marcar como pagados (que aún no estén marcados)
-  const diasPend=[...new Set(supTrabajos.map(t=>t.fecha))].filter(f=>!supDiasPagados.includes(f)).sort();
-  const diasYaPag=[...new Set(pagados.map(t=>t.fecha))].sort();
+async function cargarSupPagosRegistros(){
+  const semana=supGetSemana();
+  const sup=supervisorActual||currentUser||'';
+  try{
+    supPagosRegistros=await api('sup_pagos_persona?select=*&semana=eq.'+semana+'&supervisor=eq.'+encodeURIComponent(sup)+'&order=fecha_pago.desc');
+  }catch(e){supPagosRegistros=[];}
+}
 
-  // Botón marcar días pagados
-  if(diasPend.length){
-    const bMark=document.createElement('button');
-    bMark.className='btn btn-ghost';bMark.textContent='✓ Marcar días como pagados';
-    bMark.style.cssText='width:100%;margin-bottom:12px;font-size:13px';
-    bMark.onclick=async()=>{
-      const dias=diasPend.map(f=>{const d=new Date(f+'T12:00:00');const dias2=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];return {label:dias2[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'),value:f};});
-      // multi-select simulado: uiChoose uno a la vez no funciona para multi, usamos confirm secuencial
-      const elegido=await uiChoose('¿Qué día ya pagaste?',dias,'Se marcará como pagado y dejará de aparecer en pendientes');
-      if(!elegido)return;
-      if(!supDiasPagados.includes(elegido))supDiasPagados.push(elegido);
-      renderSupPagos();
-    };
-    list.appendChild(bMark);
-  }
+async function renderSupPagosResumen(list){
+  await cargarSupPagosRegistros();
+  const semana=supGetSemana();
+  const sup=supervisorActual||currentUser||'';
+  const dias2=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const fmtF=f=>{const d=new Date(f+'T12:00:00');return dias2[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');};
 
-  // Si hay días ya pagados, botón para desmarcar
-  if(diasYaPag.length){
-    const bUnmark=document.createElement('button');
-    bUnmark.className='btn btn-ghost';bUnmark.textContent='↶ Quitar día pagado';
-    bUnmark.style.cssText='width:100%;margin-bottom:12px;font-size:12px;color:var(--muted)';
-    bUnmark.onclick=async()=>{
-      const dias=diasYaPag.map(f=>{const d=new Date(f+'T12:00:00');const dias2=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];return {label:dias2[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' (pagado)',value:f};});
-      const elegido=await uiChoose('¿Qué día quieres desmarcar?',dias);
-      if(!elegido)return;
-      supDiasPagados=supDiasPagados.filter(d=>d!==elegido);
-      renderSupPagos();
-    };
-    list.appendChild(bUnmark);
-  }
-
-  // TÉCNICOS — total pendiente por técnico
-  const tecs={};
-  pendientes.forEach(t=>{
-    const cu=t.cuadrilla||'?';
-    tecs[cu]=(tecs[cu]||0)+(parseFloat(t.pago_tecnico)||0);
+  // Construir mapa de pagos registrados por persona+fecha
+  // {nombre: [fechas ya pagadas]}
+  const pagadosPorPersona={};
+  supPagosRegistros.forEach(r=>{
+    if(!pagadosPorPersona[r.persona])pagadosPorPersona[r.persona]=[];
+    pagadosPorPersona[r.persona].push(r.fecha_trabajo);
   });
-  if(Object.keys(tecs).length){
-    const grpT=document.createElement('div');grpT.className='marca-group';
-    const hT=document.createElement('div');hT.className='marca-header';hT.style.color='var(--green)';hT.textContent='👷 TÉCNICOS — pendiente de pagar';grpT.appendChild(hT);
-    Object.keys(tecs).forEach(nombre=>{
-      if(!tecs[nombre])return;
-      const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:10px 12px;background:var(--card);border-radius:8px;margin-bottom:4px';
-      row.innerHTML='<span style="font-size:14px;font-weight:600">'+esc(nombre)+'</span><span style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">$'+tecs[nombre].toLocaleString()+'</span>';
-      grpT.appendChild(row);
+
+  // Calcular pendiente y pagado por persona
+  const resumen={}; // {nombre: {rol, pendiente, pagado, diasPend, diasPag}}
+  supTrabajos.forEach(t=>{
+    // Técnico
+    const cu=t.cuadrilla||'?';
+    if(!resumen[cu])resumen[cu]={rol:'tec',pendiente:0,pagado:0,diasPend:[],diasPag:[]};
+    const yaPagTec=(pagadosPorPersona[cu]||[]).includes(t.fecha);
+    if(yaPagTec){resumen[cu].pagado+=(parseFloat(t.pago_tecnico)||0);if(!resumen[cu].diasPag.includes(t.fecha))resumen[cu].diasPag.push(t.fecha);}
+    else{resumen[cu].pendiente+=(parseFloat(t.pago_tecnico)||0);if(!resumen[cu].diasPend.includes(t.fecha))resumen[cu].diasPend.push(t.fecha);}
+    // Ayudante
+    const ayn=t.ayudante_nombre||t.ayudante||'';
+    const ayp=parseFloat(t.pago_ayudante)||0;
+    if(ayn&&ayp>0){
+      if(!resumen[ayn])resumen[ayn]={rol:'ayu',pendiente:0,pagado:0,diasPend:[],diasPag:[]};
+      const yaPagAyu=(pagadosPorPersona[ayn]||[]).includes(t.fecha);
+      if(yaPagAyu){resumen[ayn].pagado+=ayp;if(!resumen[ayn].diasPag.includes(t.fecha))resumen[ayn].diasPag.push(t.fecha);}
+      else{resumen[ayn].pendiente+=ayp;if(!resumen[ayn].diasPend.includes(t.fecha))resumen[ayn].diasPend.push(t.fecha);}
+    }
+  });
+
+  const renderPersona=(nombre,d,col)=>{
+    const card=document.createElement('div');card.className='item';card.style.cssText='padding:12px 14px;margin-bottom:6px';
+    let html='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px;font-weight:700">'+esc(nombre)+'</span>';
+    if(d.pendiente>0)html+='<span style="font-family:var(--mono);font-size:16px;font-weight:700;color:'+col+'">$'+d.pendiente.toLocaleString()+' pendiente</span>';
+    else html+='<span style="font-size:13px;color:var(--green)">✅ Pagado</span>';
+    html+='</div>';
+    if(d.pagado>0)html+='<div style="font-size:11px;color:var(--muted);margin-top:3px">Ya pagado: $'+d.pagado.toLocaleString()+' ('+d.diasPag.map(fmtF).join(', ')+')</div>';
+    card.innerHTML=html;
+    // Botón pagar si hay pendiente
+    if(d.pendiente>0&&d.diasPend.length){
+      const b=document.createElement('button');b.className='btn btn-success';b.textContent='✓ Registrar pago';b.style.cssText='width:100%;margin-top:8px;font-size:13px';
+      b.onclick=async()=>{
+        const diasOpts=d.diasPend.sort().map(f=>({label:fmtF(f)+' — $'+calcPagoPersonaDia(nombre,d.rol,f).toLocaleString(),value:f}));
+        diasOpts.push({label:'Todos los días pendientes',value:'__todos__'});
+        const elegido=await uiChoose('¿Qué días pagaste a '+nombre+'?',diasOpts,'Se guardará el registro');
+        if(!elegido)return;
+        const diasAPagar=elegido==='__todos__'?d.diasPend:[elegido];
+        for(const fecha of diasAPagar){
+          const monto=calcPagoPersonaDia(nombre,d.rol,fecha);
+          await api('sup_pagos_persona',{method:'POST',body:JSON.stringify({semana,supervisor:sup,persona:nombre,rol:d.rol,fecha_trabajo:fecha,monto,fecha_pago:new Date().toISOString()})});
+        }
+        showToast('Pago registrado ✓');
+        renderSupPagos();
+      };
+      card.appendChild(b);
+    }
+    // Botón revertir si hay pagado
+    if(d.pagado>0){
+      const b2=document.createElement('button');b2.className='btn btn-ghost';b2.textContent='↶ Revertir pago';b2.style.cssText='width:100%;margin-top:4px;font-size:11px;color:var(--muted)';
+      b2.onclick=async()=>{
+        const diasOpts=d.diasPag.sort().map(f=>({label:fmtF(f),value:f}));
+        const elegido=await uiChoose('¿Qué día revertir?',diasOpts,'El pago volverá a pendiente');
+        if(!elegido)return;
+        const reg=supPagosRegistros.find(r=>r.persona===nombre&&r.fecha_trabajo===elegido);
+        if(reg)await api('sup_pagos_persona?id=eq.'+reg.id,{method:'DELETE'});
+        showToast('Pago revertido');renderSupPagos();
+      };
+      card.appendChild(b2);
+    }
+    return card;
+  };
+
+  // Calcular monto de una persona en un día específico
+  function calcPagoPersonaDia(nombre,rol,fecha){
+    let tot=0;
+    supTrabajos.filter(t=>t.fecha===fecha).forEach(t=>{
+      if(rol==='tec'&&t.cuadrilla===nombre)tot+=parseFloat(t.pago_tecnico)||0;
+      if(rol==='ayu'&&(t.ayudante_nombre===nombre||t.ayudante===nombre))tot+=parseFloat(t.pago_ayudante)||0;
     });
+    return tot;
+  }
+
+  // TÉCNICOS
+  const tecs=Object.keys(resumen).filter(n=>resumen[n].rol==='tec');
+  if(tecs.length){
+    const grpT=document.createElement('div');grpT.className='marca-group';
+    const hT=document.createElement('div');hT.className='marca-header';hT.style.color='var(--green)';hT.textContent='👷 TÉCNICOS';grpT.appendChild(hT);
+    tecs.forEach(n=>grpT.appendChild(renderPersona(n,resumen[n],'var(--green)')));
     list.appendChild(grpT);
   }
 
-  // AYUDANTES — total pendiente por ayudante (con nombre)
-  const ayus={};
-  pendientes.forEach(t=>{
-    const ayn=t.ayudante_nombre||t.ayudante||'';
-    const ayp=parseFloat(t.pago_ayudante)||0;
-    if(ayn&&ayp>0)ayus[ayn]=(ayus[ayn]||0)+ayp;
-  });
-  if(Object.keys(ayus).length){
+  // AYUDANTES
+  const ayus=Object.keys(resumen).filter(n=>resumen[n].rol==='ayu');
+  if(ayus.length){
     const grpA=document.createElement('div');grpA.className='marca-group';grpA.style.marginTop='10px';
-    const hA=document.createElement('div');hA.className='marca-header';hA.style.color='var(--accent2)';hA.textContent='🤝 AYUDANTES — pendiente de pagar';grpA.appendChild(hA);
-    Object.keys(ayus).forEach(nombre=>{
-      if(!ayus[nombre])return;
-      const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:10px 12px;background:var(--card);border-radius:8px;margin-bottom:4px';
-      row.innerHTML='<span style="font-size:14px;font-weight:600">'+esc(nombre)+'</span><span style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--accent2)">$'+ayus[nombre].toLocaleString()+'</span>';
-      grpA.appendChild(row);
-    });
+    const hA=document.createElement('div');hA.className='marca-header';hA.style.color='var(--accent2)';hA.textContent='🤝 AYUDANTES';grpA.appendChild(hA);
+    ayus.forEach(n=>grpA.appendChild(renderPersona(n,resumen[n],'var(--accent2)')));
     list.appendChild(grpA);
   }
 
-  // Si ya está todo pagado
-  if(!Object.keys(tecs).length&&!Object.keys(ayus).length){
-    const ok=document.createElement('div');ok.style.cssText='text-align:center;padding:30px;font-size:14px;color:var(--green)';
-    ok.textContent='✅ Todo pagado esta semana';
-    list.appendChild(ok);
+  const todoPagado=Object.values(resumen).every(d=>d.pendiente===0);
+  if(todoPagado&&Object.keys(resumen).length){
+    const ok=document.createElement('div');ok.style.cssText='text-align:center;padding:20px;font-size:14px;color:var(--green)';
+    ok.textContent='✅ Todo pagado esta semana';list.appendChild(ok);
   }
 
-  // Resumen de días ya pagados
-  if(diasYaPag.length){
-    const grpP=document.createElement('div');grpP.className='marca-group';grpP.style.cssText='margin-top:14px;opacity:.6';
-    const hP=document.createElement('div');hP.className='marca-header';hP.style.color='var(--muted)';hP.textContent='✓ DÍAS YA PAGADOS';grpP.appendChild(hP);
-    diasYaPag.forEach(f=>{
-      const d=new Date(f+'T12:00:00');const dias2=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-      const row=document.createElement('div');row.style.cssText='font-size:12px;color:var(--muted);padding:4px 10px';
-      row.textContent=dias2[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
-      grpP.appendChild(row);
+  // Historial de pagos registrados
+  if(supPagosRegistros.length){
+    const grpH=document.createElement('div');grpH.className='marca-group';grpH.style.cssText='margin-top:16px;opacity:.7';
+    const hH=document.createElement('div');hH.className='marca-header';hH.style.color='var(--muted)';hH.textContent='📋 HISTORIAL DE PAGOS';grpH.appendChild(hH);
+    supPagosRegistros.forEach(r=>{
+      const dp=new Date(r.fecha_pago);const fpago=String(dp.getDate()).padStart(2,'0')+'/'+String(dp.getMonth()+1).padStart(2,'0')+' '+String(dp.getHours()).padStart(2,'0')+':'+String(dp.getMinutes()).padStart(2,'0');
+      const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;padding:7px 10px;background:var(--card);border-radius:7px;margin-bottom:3px;font-size:12px';
+      row.innerHTML='<span><b>'+esc(r.persona)+'</b> — '+fmtF(r.fecha_trabajo)+'</span><span style="font-family:var(--mono);color:var(--muted)">$'+parseFloat(r.monto).toLocaleString()+' · '+fpago+'</span>';
+      grpH.appendChild(row);
     });
-    list.appendChild(grpP);
+    list.appendChild(grpH);
   }
 }
 
