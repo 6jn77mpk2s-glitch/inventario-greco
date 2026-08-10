@@ -24,7 +24,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .pin-logo{font-size:24px;font-weight:700;}.pin-logo span{color:var(--accent2);}
 .pin-sub{font-size:13px;color:var(--muted);text-align:center;}
 .pin-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:280px;}
-.pin-input{font-family:var(--mono);font-size:32px;letter-spacing:12px;background:var(--card);border:2px solid var(--border);color:var(--text);padding:14px 20px;border-radius:12px;width:100%;text-align:center;outline:none;-webkit-text-security:disc;}
+.pin-input{font-family:var(--mono);font-size:32px;letter-spacing:12px;background:var(--card);border:2px solid var(--border);color:var(--text);padding:14px 20px;border-radius:12px;width:100%;text-align:center;outline:none;-webkit-text-security:disc;box-sizing:border-box;}
+#loginEmail{font-size:16px!important;letter-spacing:0!important;text-align:left!important;-webkit-text-security:none!important;font-family:sans-serif!important;}
 .pin-input:focus{border-color:var(--accent);}
 .pin-input.error{border-color:var(--red);animation:shake .3s;}
 .pin-btn{font-family:var(--sans);font-size:15px;font-weight:700;background:var(--accent);color:white;border:none;border-radius:10px;padding:14px;width:100%;cursor:pointer;}
@@ -275,11 +276,17 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 <!-- PIN -->
 <div class="pin-screen" id="pinScreen">
   <div class="pin-logo">Climas <span>Greco</span></div>
-  <div class="pin-sub">Ingresa el código de acceso</div>
-  <div class="pin-wrap">
-    <input class="pin-input" type="password" id="pinInput" maxlength="6" inputmode="numeric" placeholder="••••" onkeydown="if(event.key==='Enter')checkPin()">
-    <button class="pin-btn" onclick="checkPin()">Entrar</button>
+  <div class="pin-sub" id="loginSub">Ingresa tus datos de acceso</div>
+  <div class="pin-wrap" id="loginForm" style="display:flex;flex-direction:column;gap:8px">
+    <input class="pin-input" type="email" id="loginEmail" placeholder="correo@climasgreco.app" style="font-size:14px;margin-bottom:8px" onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+    <input class="pin-input" type="password" id="loginPass" maxlength="10" inputmode="numeric" placeholder="contraseña" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="pin-btn" onclick="doLogin()" id="loginBtn">Entrar</button>
     <span class="pin-err" id="pinErr"></span>
+  </div>
+  <!-- Selector de rol (aparece si el usuario tiene múltiples roles) -->
+  <div id="rolSelector" style="display:none;width:100%;max-width:320px;margin:0 auto">
+    <div style="font-size:14px;color:var(--muted);text-align:center;margin-bottom:16px">¿Cómo quieres entrar hoy?</div>
+    <div id="rolBotones" style="display:flex;flex-direction:column;gap:10px"></div>
   </div>
 </div>
 
@@ -354,7 +361,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   <header>
     <div class="header-top">
       <div class="logo">Climas <span>Greco</span></div>
-      <div class="branch-pill sur" onclick="salirSupervisor()" style="cursor:pointer">SALIR ↩</div>
+      <div class="branch-pill sur" onclick="salirDeApp()" style="cursor:pointer">SALIR ↩</div>
     </div>
     <div id="supBienvenida" style="padding:10px 4px 4px;font-size:17px;font-weight:700">Supervisor</div>
     <div class="tabs" id="supTabs" style="margin-top:6px">
@@ -397,7 +404,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   <header>
     <div class="header-top">
       <div class="logo">Climas <span>Greco</span></div>
-      <div class="branch-pill sur" onclick="salirTecnico()" style="cursor:pointer">SALIR ↩</div>
+      <div class="branch-pill sur" onclick="salirDeApp()" style="cursor:pointer">SALIR ↩</div>
     </div>
     <div id="tecBienvenida" style="padding:14px 4px 4px;font-size:18px;font-weight:700">Bienvenido</div>
   </header>
