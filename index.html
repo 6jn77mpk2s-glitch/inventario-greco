@@ -2148,19 +2148,12 @@ function enterInventarios(){
   document.getElementById('userScreen').classList.add('show');
 }
 function enterTrabajosPin(){
-  // Con el nuevo login, ya sabemos quién es el usuario — no necesitamos PIN
-  if(authUsuario&&authUsuario.nombre){
-    currentUser=authUsuario.nombre;
-    currentModule='trabajos';
-    document.getElementById('moduleScreen').classList.remove('show');
-    document.getElementById('trabajosApp').style.display='block';
-    initTrabajos();
-  }else{
-    // Fallback: PIN viejo si no hay sesión de auth
-    document.getElementById('moduleScreen').classList.remove('show');
-    document.getElementById('trabajosPinScreen').style.display='flex';
-    setTimeout(()=>document.getElementById('trabajosPinInput').focus(),100);
-  }
+  currentUser=authUsuario?authUsuario.nombre:(currentUser||'Eduardo');
+  currentModule='trabajos';
+  document.getElementById('moduleScreen').classList.remove('show');
+  document.getElementById('trabajosPinScreen').style.display='none';
+  document.getElementById('trabajosApp').style.display='block';
+  initTrabajos();
 }
 function backToModule(){
   document.getElementById('trabajosPinScreen').style.display='none';
