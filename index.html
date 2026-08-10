@@ -2144,8 +2144,10 @@ function checkPin(){
 // ── MODULE SELECTOR ──
 function enterInventarios(){
   currentModule='inventarios';
+  currentUser=authUsuario?authUsuario.nombre:(currentUser||'Eduardo');
   document.getElementById('moduleScreen').classList.remove('show');
-  document.getElementById('userScreen').classList.add('show');
+  document.getElementById('userScreen').classList.remove('show');
+  document.getElementById('branchScreen').classList.add('show');
 }
 function enterTrabajosPin(){
   currentUser=authUsuario?authUsuario.nombre:(currentUser||'Eduardo');
@@ -3633,7 +3635,8 @@ function nombreMes(m){return ['ene','feb','mar','abr','may','jun','jul','ago','s
 function actualizarVisibilidadResumen(){
   const tab=document.getElementById('tabResumen');
   if(!tab)return;
-  const esAdmin=(currentUser==='Eduardo'&&!viendoComo);
+  const admins=authUsuario?(authUsuario.roles||[]).includes('admin'):currentUser==='Eduardo';
+  const esAdmin=(admins&&!viendoComo);
   tab.style.display=esAdmin?'':'none';
   // si estaba en resumen y deja de ser admin, mandarlo a semana
   if(!esAdmin&&document.getElementById('secResumen').style.display==='block'){switchTrabTab('semana');}
@@ -5509,7 +5512,7 @@ async function loadCaja(){
     cajaPendPagados=await api('pendientes?select=*&saldado=eq.true&usuario=eq.'+encodeURIComponent(currentUser||''));
     // Transferencias pendientes por asignar (solo las ve la cuenta admin Eduardo, no en modo ver-como)
     transfPendientes=[];
-    if(currentUser==='Eduardo'&&!viendoComo){
+    if(authUsuario&&(authUsuario.roles||[]).includes('supervisor')&&!viendoComo){
       try{ transfPendientes=await api('transferencias?select=*&estado=eq.pendiente&order=fecha.desc,id.desc'); }catch(e){}
     }
     renderCaja();
