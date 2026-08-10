@@ -2033,6 +2033,94 @@ async function guardarEstadoTecnico(uid,cambios){
   }
 }
 
+// ════════ SUPABASE AUTH LOGIN ════════
+let authSession=null;
+let authUsuario=null;
+
+async function doLogin(){
+  const email=document.getElementById('loginEmail').value.trim();
+  const pass=document.getElementById('loginPass').value.trim();
+  const btn=document.getElementById('loginBtn');
+  const err=document.getElementById('pinErr');
+  if(!email||!pass){err.textContent='Completa los datos';return;}
+  btn.textContent='Entrando...';btn.disabled=true;err.textContent='';
+  try{
+    const res=await fetch(URL_SB+'/auth/v1/token?grant_type=password',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':KEY_SB},
+      body:JSON.stringify({email,password:pass})
+    });
+    const data=await res.json();
+    if(!res.ok||data.error){
+      err.textContent=data.error_description||data.msg||'Correo o contraseña incorrectos';
+      btn.textContent='Entrar';btn.disabled=false;return;
+    }
+    authSession=data;
+    const perfil=await fetch(URL_SB+'/rest/v1/app_usuarios?select=*&id=eq.'+data.user.id,{
+      headers:{'apikey':KEY_SB,'Authorization':'Bearer '+data.access_token}
+    });
+    const perfilData=await perfil.json();
+    if(!perfilData.length){err.textContent='Usuario sin perfil. Contacta al admin.';btn.textContent='Entrar';btn.disabled=false;return;}
+    authUsuario=perfilData[0];
+    const roles=authUsuario.roles||[];
+    if(roles.length===1){entrarConRol(roles[0]);}
+    else if(roles.length>1){mostrarSelectorRol(roles);}
+    else{err.textContent='Sin roles asignados.';}
+  }catch(e){
+    err.textContent='Error de conexión: '+e.message;
+  }
+  btn.textContent='Entrar';btn.disabled=false;
+}
+
+function mostrarSelectorRol(roles){
+  document.getElementById('loginForm').style.display='none';
+  document.getElementById('loginSub').textContent='Hola, '+authUsuario.nombre+' 👋';
+  document.getElementById('rolSelector').style.display='block';
+  const cont=document.getElementById('rolBotones');cont.innerHTML='';
+  const config={
+    admin:{label:'🔧 Admin',sub:'Inventarios, trabajos y todo',color:'var(--accent2)'},
+    supervisor:{label:'👔 Supervisor',sub:'Trabajos de mis cuadrillas',color:'#c084fc'},
+    tecnico:{label:'👷 Técnico',sub:'Mis trabajos del día',color:'var(--green)'}
+  };
+  roles.forEach(rol=>{
+    const r=config[rol]||{label:rol,sub:'',color:'var(--text)'};
+    const b=document.createElement('button');
+    b.style.cssText='padding:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;color:var(--text);text-align:left;cursor:pointer;width:100%;margin-bottom:8px';
+    b.innerHTML='<div style="font-size:16px;font-weight:700;color:'+r.color+'">'+r.label+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px">'+r.sub+'</div>';
+    b.onclick=()=>entrarConRol(rol);
+    cont.appendChild(b);
+  });
+}
+
+function entrarConRol(rol){
+  const nombre=authUsuario.nombre;
+  document.getElementById('pinScreen').style.display='none';
+  document.getElementById('rolSelector').style.display='none';
+  document.getElementById('loginForm').style.display='flex';
+  document.getElementById('loginSub').textContent='Ingresa tus datos de acceso';
+  document.getElementById('loginEmail').value='';
+  document.getElementById('loginPass').value='';
+  if(rol==='admin'){
+    currentUser=nombre;
+    document.getElementById('moduleScreen').classList.add('show');
+  }else if(rol==='supervisor'){
+    entrarComoSupervisor(nombre);
+  }else if(rol==='tecnico'){
+    entrarComoTecnico(nombre);
+  }
+}
+
+function salirDeApp(){
+  authSession=null;authUsuario=null;currentUser=null;
+  document.getElementById('pinScreen').style.display='flex';
+  document.getElementById('moduleScreen').classList.remove('show');
+  document.getElementById('loginEmail').value='';
+  document.getElementById('loginPass').value='';
+  document.getElementById('pinErr').textContent='';
+  document.getElementById('loginForm').style.display='flex';
+  document.getElementById('rolSelector').style.display='none';
+}
+
 function checkPin(){
   const v=document.getElementById('pinInput').value;
   if(v===PIN){
