@@ -2094,12 +2094,23 @@ function mostrarSelectorRol(roles){
 
 function entrarConRol(rol){
   const nombre=authUsuario.nombre;
+  // Limpiar TODO el estado de sesiones anteriores
+  supervisorActual=null;
+  tecnicoActual=null;
+  viendoComo=null;
+  adminUser=null;
+  currentUser=null;
+  // Ocultar todas las pantallas
   document.getElementById('pinScreen').style.display='none';
   document.getElementById('rolSelector').style.display='none';
   document.getElementById('loginForm').style.display='flex';
   document.getElementById('loginSub').textContent='Ingresa tus datos de acceso';
   document.getElementById('loginEmail').value='';
   document.getElementById('loginPass').value='';
+  document.getElementById('moduleScreen').classList.remove('show');
+  document.getElementById('trabajosApp').style.display='none';
+  document.getElementById('tecnicoApp').style.display='none';
+  document.getElementById('supervisorApp').style.display='none';
   if(rol==='admin'){
     currentUser=nombre;
     document.getElementById('moduleScreen').classList.add('show');
