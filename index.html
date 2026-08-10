@@ -1139,7 +1139,7 @@ const SUR_DEFAULT=[
 ];
 
 // ── API ──
-const hdrs=()=>({'apikey':KEY_SB,'Authorization':'Bearer '+KEY_SB,'Content-Type':'application/json','Prefer':'return=representation'});
+const hdrs=()=>({'apikey':KEY_SB,'Authorization':'Bearer '+(authSession?authSession.access_token:KEY_SB),'Content-Type':'application/json','Prefer':'return=representation'});
 function setSyncDot(s){const d=document.getElementById('syncDot');if(d)d.className='sync-dot '+s;}
 async function api(path,opts={}){
   setSyncDot('syncing');
