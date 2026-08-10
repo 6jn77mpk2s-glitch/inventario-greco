@@ -2148,9 +2148,19 @@ function enterInventarios(){
   document.getElementById('userScreen').classList.add('show');
 }
 function enterTrabajosPin(){
-  document.getElementById('moduleScreen').classList.remove('show');
-  document.getElementById('trabajosPinScreen').style.display='flex';
-  setTimeout(()=>document.getElementById('trabajosPinInput').focus(),100);
+  // Con el nuevo login, ya sabemos quién es el usuario — no necesitamos PIN
+  if(authUsuario&&authUsuario.nombre){
+    currentUser=authUsuario.nombre;
+    currentModule='trabajos';
+    document.getElementById('moduleScreen').classList.remove('show');
+    document.getElementById('trabajosApp').style.display='block';
+    initTrabajos();
+  }else{
+    // Fallback: PIN viejo si no hay sesión de auth
+    document.getElementById('moduleScreen').classList.remove('show');
+    document.getElementById('trabajosPinScreen').style.display='flex';
+    setTimeout(()=>document.getElementById('trabajosPinInput').focus(),100);
+  }
 }
 function backToModule(){
   document.getElementById('trabajosPinScreen').style.display='none';
@@ -2162,7 +2172,21 @@ function checkTrabajosPin(){
   if(v===PIN_TRABAJOS){
     currentModule='trabajos';
     document.getElementById('trabajosPinScreen').style.display='none';
-    document.getElementById('userScreen').classList.add('show');
+    // Si hay usuario autenticado, usar ese nombre directamente
+    if(authUsuario&&authUsuario.nombre){
+      currentUser=authUsuario.nombre;
+      document.getElementById('trabajosApp').style.display='block';
+      initTrabajos();
+    }else{
+      document.getElementById('userScreen').classList.add('show');
+    }
+  }else if(tecnicoPasswords()[v]){
+    // Acceso directo como técnico desde pantalla de trabajos (fallback)
+    document.getElementById('trabajosPinScreen').style.display='none';
+    entrarComoTecnico(tecnicoPasswords()[v]);
+  }else if(SUPERVISOR_PASSWORDS[v]){
+    document.getElementById('trabajosPinScreen').style.display='none';
+    entrarComoSupervisor(SUPERVISOR_PASSWORDS[v]);
   }else{
     const i=document.getElementById('trabajosPinInput');i.classList.add('error');
     document.getElementById('trabajosPinErr').textContent='Código incorrecto';
