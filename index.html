@@ -5110,7 +5110,9 @@ async function loadRevisar(){
 
 function fmtFechaCorta(f){
   if(!f)return '';
-  const d=new Date(f+'T12:00:00');
+  // Manejar tanto YYYY-MM-DD como timestamps completos
+  const d=f.includes('T')?new Date(f):new Date(f+'T12:00:00');
+  if(isNaN(d.getTime()))return '';
   const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   return dias[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
 }
