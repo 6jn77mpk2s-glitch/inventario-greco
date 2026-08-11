@@ -3707,7 +3707,8 @@ function actualizarVisibilidadResumen(){
 async function initTrabajos(){
   document.getElementById('trabUserPill').textContent='👤 '+currentUser;
   actualizarVisibilidadResumen();
-  await loadTarifas(true); // silencioso, solo carga datos
+  await cargarSemanasCerradas();
+  await loadTarifas(true);
   await loadTrabajos();
 }
 
