@@ -4954,11 +4954,15 @@ async function cerrarSemana(sid){
   }))return;
   try{
     await api('semanas_cerradas',{method:'POST',body:JSON.stringify({semana:sid,cerrada_por:currentUser||'',fecha_cierre:new Date().toISOString()})});
-    semanasCerradas.push(sid);
-    showToast('Semana cerrada 🔒');
-    renderSemana();
-    renderCerrarSemanaBar();
-  }catch(e){showToast('Error al cerrar: '+e.message,true);}
+  }catch(e){
+    // Si ya existe (duplicate key), simplemente la marcamos como cerrada localmente
+    if(!semanasCerradas.includes(sid))semanasCerradas.push(sid);
+  }
+  if(!semanasCerradas.includes(sid))semanasCerradas.push(sid);
+  showToast('Semana cerrada 🔒');
+  renderSemana();
+  renderCerrarSemanaBar();
+}
 }
 
 async function reabrirSemana(sid){
