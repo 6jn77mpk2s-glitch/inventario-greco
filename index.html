@@ -5110,8 +5110,9 @@ async function loadRevisar(){
 
 function fmtFechaCorta(f){
   if(!f)return '';
-  // Manejar tanto YYYY-MM-DD como timestamps completos
-  const d=f.includes('T')?new Date(f):new Date(f+'T12:00:00');
+  // Manejar YYYY-MM-DD, timestamps con T, y timestamps con espacio (postgres)
+  const normalized=f.replace(' ','T');
+  const d=normalized.includes('T')?new Date(normalized):new Date(f+'T12:00:00');
   if(isNaN(d.getTime()))return '';
   const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   return dias[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
