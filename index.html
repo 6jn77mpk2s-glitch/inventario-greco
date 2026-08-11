@@ -4298,28 +4298,63 @@ async function agregarCentro(){
 async function agregarCable(){
   const metros=await pedirNum('¿Cuántos metros de cable se usaron en total?','$65 por metro extra · 5m gratis por equipo');
   if(metros===null||metros<=0)return;
-  // Si la cuadrilla tiene 2 rollos, preguntar de cuál
-  let rolloTipo='';
   const cuad=document.getElementById('trabCuadrilla').value;
-  if(cuad){
-    const rollos=await getRollos(cuad);
-    if(rollos.length>=2){
-      const rOpts=rollos.map(r=>({
-        label:(r.tipo==='viejo'?'📦 Rollo viejo':'🆕 Rollo nuevo')+' — '+(Math.round(parseFloat(r.metros)*100)/100)+'m disponibles',
-        value:r.tipo
-      }));
-      rolloTipo=await uiChoose('¿De cuál rollo se usaron los '+metros+'m?',rOpts,'');
-      if(!rolloTipo)return;
+  const rollos=cuad?await getRollos(cuad):[];
+
+  if(rollos.length>=2){
+    // Tiene 2 rollos — preguntar cuántos metros de cada uno
+    const viejo=rollos.find(r=>r.tipo==='viejo');
+    const nuevo=rollos.find(r=>r.tipo==='nuevo');
+    const mViejo=Math.round(parseFloat(viejo?viejo.metros:0)*100)/100;
+    const mNuevo=Math.round(parseFloat(nuevo?nuevo.metros:0)*100)/100;
+
+    // Preguntar cuántos del viejo (el resto sale del nuevo)
+    const viejosStr=await uiInput(
+      '¿Cuántos metros del rollo viejo? ('+mViejo+'m disponibles)',
+      {placeholder:'0 si no usaste del viejo', tipo:'numero', valor:Math.min(metros,mViejo)}
+    );
+    if(viejosStr===null)return;
+    const metrosViejo=Math.min(Math.max(0,parseFloat(viejosStr)||0),mViejo);
+    const metrosNuevo=Math.round((metros-metrosViejo)*100)/100;
+
+    // Agregar un renglón por cada rollo usado
+    if(metrosViejo>0){
+      const itemV={tipo:'cable',metros:metrosViejo,monto:0,montoManual:null,rolloTipo:'viejo',
+        nombreVisible:'Cable '+metrosViejo+'m (rollo viejo)',descuentaCableMetros:metrosViejo};
+      desgloseItems.push(itemV);
     }
+    if(metrosNuevo>0){
+      const itemN={tipo:'cable',metros:metrosNuevo,monto:0,montoManual:null,rolloTipo:'nuevo',
+        nombreVisible:'Cable '+metrosNuevo+'m (rollo nuevo)',descuentaCableMetros:metrosNuevo};
+      desgloseItems.push(itemN);
+    }
+    recalcCable();
+    // Ajuste de precio sobre el total
+    const totalCable=desgloseItems.filter(d=>d.tipo==='cable').reduce((s,d)=>s+(d.monto||0),0);
+    const ajuste=await uiInput('Precio total del cable (redondeado al 50)',{tipo:'numero',valor:totalCable,sub:'Total '+metros+'m ('+metrosViejo+'m viejo + '+metrosNuevo+'m nuevo)'});
+    if(ajuste!==null&&ajuste!==''){
+      // Distribuir el ajuste proporcionalmente
+      const val=parseFloat(ajuste)||0;
+      const items=desgloseItems.filter(d=>d.tipo==='cable');
+      if(items.length===1){items[0].montoManual=val;}
+      else if(items.length===2){
+        const prop=metrosViejo/metros;
+        items[0].montoManual=Math.round(val*prop/50)*50;
+        items[1].montoManual=val-items[0].montoManual;
+      }
+    }
+  }else{
+    // Un solo rollo o sin rollos — flujo original
+    let rolloTipo=rollos.length===1?rollos[0].tipo:'';
+    const item={tipo:'cable',metros,monto:0,montoManual:null,rolloTipo,
+      nombreVisible:'Cable '+metros+'m'+(rolloTipo?' (rollo '+(rolloTipo==='viejo'?'viejo':'nuevo')+')':''),
+      descuentaCableMetros:metros};
+    desgloseItems.push(item);
+    recalcCable();
+    const sugerido=item.monto;
+    const ajuste=await uiInput('Precio del cable (redondeado al 50)',{tipo:'numero',valor:sugerido,sub:'Puedes dejarlo o poner otro número cerrado'});
+    if(ajuste!==null&&ajuste!==''){const val=parseFloat(ajuste);if(!isNaN(val))item.montoManual=val;}
   }
-  const item={tipo:'cable',metros,monto:0,montoManual:null,rolloTipo,
-    nombreVisible:'Cable '+metros+'m'+(rolloTipo?' (rollo '+(rolloTipo==='viejo'?'viejo':'nuevo')+')':''),
-    descuentaCableMetros:metros};
-  desgloseItems.push(item);
-  recalcCable();
-  const sugerido=item.monto;
-  const ajuste=await uiInput('Precio del cable (redondeado al 50)',{tipo:'numero',valor:sugerido,sub:'Puedes dejarlo o poner otro número cerrado'});
-  if(ajuste!==null&&ajuste!==''){const val=parseFloat(ajuste);if(!isNaN(val))item.montoManual=val;}
   renderDesglose();recalcTrabajo();
 }
 async function agregarDesinstalacion(){
