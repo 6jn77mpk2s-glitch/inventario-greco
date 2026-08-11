@@ -3815,6 +3815,7 @@ function renderResumenSemana(){
 }
 
 function renderSemana(){
+  renderCerrarSemanaBar();
   const list=document.getElementById('listSemana');
   if(!trabajos.length){list.innerHTML='<div class="empty">Sin trabajos esta semana.<br>Toca "+ Nuevo trabajo" para empezar.</div>';return;}
   // Agrupar por fecha
