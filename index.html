@@ -4958,7 +4958,7 @@ async function cerrarSemana(sid){
     showToast('Semana cerrada 🔒');
     renderSemana();
     renderCerrarSemanaBar();
-  }catch(e){showToast('Error al cerrar semana',true);}
+  }catch(e){showToast('Error al cerrar: '+e.message,true);}
 }
 
 async function reabrirSemana(sid){
