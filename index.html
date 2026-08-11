@@ -3908,6 +3908,15 @@ function buildTrabajoCard(t){
     acts.appendChild(info);
   }
   act.appendChild(acts);
+  // Bloquear editar/borrar si la semana está cerrada
+  const sidTrab=t.semana||semanaId(semanaOffset);
+  if(mio&&semanaEstaCerrada(sidTrab)){
+    acts.innerHTML='';
+    const lock=document.createElement('div');
+    lock.style.cssText='font-size:12px;color:var(--muted);text-align:center;width:100%;padding:4px 0';
+    lock.textContent='🔒 Semana cerrada — no se puede editar';
+    acts.appendChild(lock);
+  }
   card.appendChild(act);
   return card;
 }
