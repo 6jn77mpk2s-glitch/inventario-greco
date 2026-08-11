@@ -304,6 +304,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <div class="branch-arrow">›</div>
     </div>
   </div>
+  <button onclick="exportarRespaldo()" style="margin-top:20px;background:none;border:1px solid var(--border);color:var(--muted);padding:8px 20px;border-radius:8px;font-size:12px;cursor:pointer">📥 Exportar respaldo</button>
 </div>
 
 <!-- TRABAJOS PIN -->
@@ -2149,6 +2150,47 @@ function checkPin(){
     const i=document.getElementById('pinInput');i.classList.add('error');
     document.getElementById('pinErr').textContent='Código incorrecto';
     setTimeout(()=>{i.classList.remove('error');i.value='';document.getElementById('pinErr').textContent='';},1200);
+  }
+}
+
+// ════════ RESPALDO DE DATOS ════════
+async function exportarRespaldo(){
+  showToast('Generando respaldo...');
+  try{
+    const tablas=[
+      'trabajos','inventario','materiales','movimientos',
+      'caja_salidas','transferencias','cuadrillas',
+      'cable_tecnicos','cable_rollos','cable_movimientos',
+      'material_tecnicos','tarifas','pendientes',
+      'agenda_estados','sup_gastos','sup_feria',
+      'sup_entregas','sup_pagos_persona','estandar_material'
+    ];
+    const respaldo={
+      fecha:new Date().toISOString(),
+      version:'1.0',
+      datos:{}
+    };
+    for(const tabla of tablas){
+      try{
+        const rows=await api(tabla+'?select=*&limit=10000');
+        respaldo.datos[tabla]=rows;
+      }catch(e){
+        respaldo.datos[tabla]=[];
+      }
+    }
+    // Descargar como JSON
+    const json=JSON.stringify(respaldo,null,2);
+    const blob=new Blob([json],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const fecha=new Date().toISOString().slice(0,10);
+    a.href=url;
+    a.download='climasgreco_respaldo_'+fecha+'.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Respaldo descargado ✓');
+  }catch(e){
+    showToast('Error al generar respaldo: '+e.message,true);
   }
 }
 
