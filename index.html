@@ -566,6 +566,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
     <div class="tab" id="tabCaja" onclick="switchTrabTab('caja')">🏦 CAJA</div>
     <div class="tab" id="tabCuadrillas" onclick="switchTrabTab('cuadrillas')">👷 CUADRILLAS</div>
     <div class="tab" id="tabResumen" onclick="switchTrabTab('resumen')">📊 RESUMEN</div>
+    <div class="tab" id="tabRevisar" onclick="switchTrabTab('revisar')">⚠️ REVISAR</div>
     <div class="tab" id="tabMas" onclick="toggleMasMenu(event)">☰ MÁS</div>
   </div>
   <!-- Menú desplegable "Más" -->
@@ -616,6 +617,11 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
       <button class="btn btn-ghost" onclick="loadCaja()" style="margin-left:auto">↻</button>
     </div>
     <div class="list" id="listCaja"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+
+  <!-- REVISAR (detección de errores) -->
+  <div id="secRevisar" style="display:none;padding:12px">
+    <div id="revisarLista"></div>
   </div>
 
   <!-- RESUMEN (dashboard admin) -->
@@ -3687,12 +3693,14 @@ function nombreMes(m){return ['ene','feb','mar','abr','may','jun','jul','ago','s
 // ── INIT ──
 function actualizarVisibilidadResumen(){
   const tab=document.getElementById('tabResumen');
+  const tabR=document.getElementById('tabRevisar');
   if(!tab)return;
   const admins=authUsuario?(authUsuario.roles||[]).includes('admin'):currentUser==='Eduardo';
   const esAdmin=(admins&&!viendoComo);
   tab.style.display=esAdmin?'':'none';
-  // si estaba en resumen y deja de ser admin, mandarlo a semana
+  if(tabR)tabR.style.display=esAdmin?'':'none';
   if(!esAdmin&&document.getElementById('secResumen').style.display==='block'){switchTrabTab('semana');}
+  if(!esAdmin&&document.getElementById('secRevisar').style.display==='block'){switchTrabTab('semana');}
 }
 
 async function initTrabajos(){
@@ -4608,6 +4616,7 @@ function switchTrabTab(t){
   document.getElementById('secCaja').style.display=t==='caja'?'block':'none';
   document.getElementById('secCuadrillas').style.display=t==='cuadrillas'?'block':'none';
   document.getElementById('secResumen').style.display=t==='resumen'?'block':'none';
+  document.getElementById('secRevisar').style.display=t==='revisar'?'block':'none';
   document.getElementById('secPend').style.display=t==='pendientes'?'block':'none';
   document.getElementById('secTarifas').style.display=t==='tarifas'?'block':'none';
   document.getElementById('tabSemana').className='tab'+(t==='semana'?' active':'');
@@ -4616,6 +4625,7 @@ function switchTrabTab(t){
   document.getElementById('tabCaja').className='tab'+(t==='caja'?' active':'');
   document.getElementById('tabCuadrillas').className='tab'+(t==='cuadrillas'?' active':'');
   document.getElementById('tabResumen').className='tab'+(t==='resumen'?' active':'');
+  document.getElementById('tabRevisar').className='tab'+(t==='revisar'?' active':'');
   document.getElementById('tabMas').className='tab'+((t==='pendientes'||t==='tarifas')?' active':'');
   document.getElementById('tabPend').className='tab'+(t==='pendientes'?' active':'');
   document.getElementById('tabTarifas').className='tab'+(t==='tarifas'?' active':'');
@@ -4624,6 +4634,7 @@ function switchTrabTab(t){
   if(t==='caja')loadCaja();
   if(t==='cuadrillas')loadCuadrillas();
   if(t==='resumen')loadResumen();
+  if(t==='revisar')loadRevisar();
   if(t==='pendientes')loadPendientes();
   if(t==='tarifas')loadTarifas();
 }
@@ -4893,6 +4904,142 @@ let cajaSalidas=[];   // salidas de la semana actual (efectivo) + todas las del 
 let cajaPendPagados=[]; // pendientes (DEBEN) ya cobrados
 let transfPendientes=[]; // transferencias por asignar a una cuenta
 let cortesEntregados=[]; // cortes de efectivo ya entregados
+
+// ════════ PANEL DE REVISIÓN (detección de errores de captura) ════════
+async function loadRevisar(){
+  const cont=document.getElementById('revisarLista');
+  cont.innerHTML='<div class="loading"><div class="spinner"></div>Analizando...</div>';
+  try{
+    // Últimas 4 semanas
+    const semanas=[];
+    for(let i=3;i>=0;i--)semanas.push(semanaId(-i));
+    const desde=semanas[0];
+
+    // Cargar todos los trabajos de las últimas 4 semanas
+    const trabs=await api('trabajos?select=*&semana=gte.'+desde+'&order=fecha.desc');
+    const cuadActivas=cuadrillasActivas().filter(c=>c!=='Henry'); // Henry no captura
+
+    const alertas=[];
+
+    // ── CHECK 1: Ayudante con pago pero sin nombre ──
+    trabs.forEach(t=>{
+      if((parseFloat(t.pago_ayudante)||0)>0&&!(t.ayudante_nombre||t.ayudante||'').trim()){
+        alertas.push({
+          tipo:'warning',
+          icono:'🤝',
+          titulo:'Ayudante sin nombre',
+          desc:'Trabajo del '+fmtFechaCorta(t.fecha)+' · '+esc(t.cuadrilla||'')+' · $'+(parseFloat(t.cobrado||t.total)||0).toLocaleString()+' — tiene pago de ayudante $'+(parseFloat(t.pago_ayudante)||0).toLocaleString()+' pero sin nombre',
+          trabajoId:t.id
+        });
+      }
+    });
+
+    // ── CHECK 2: Trabajo sin supervisor (cuadrilla ≠ Eduardo, no es garantía) ──
+    trabs.forEach(t=>{
+      if(t.cuadrilla!=='Eduardo'&&!t.supervisor&&!t.es_garantia){
+        alertas.push({
+          tipo:'info',
+          icono:'👔',
+          titulo:'Sin supervisor asignado',
+          desc:'Trabajo del '+fmtFechaCorta(t.fecha)+' · '+esc(t.cuadrilla||'')+' · $'+(parseFloat(t.cobrado||t.total)||0).toLocaleString()+' — no tiene supervisor seleccionado',
+          trabajoId:t.id
+        });
+      }
+    });
+
+    // ── CHECK 3: Pagos que no cuadran ──
+    trabs.forEach(t=>{
+      let ps=[];try{ps=JSON.parse(t.pagos||'[]');}catch(e){}
+      const sumaPagos=ps.reduce((s,p)=>s+(parseFloat(p.monto)||0),0);
+      const cobrado=parseFloat(t.cobrado||t.total)||0;
+      if(ps.length>0&&cobrado>0&&Math.abs(cobrado-sumaPagos)>1&&!t.es_garantia){
+        alertas.push({
+          tipo:'error',
+          icono:'💰',
+          titulo:'Pagos no cuadran',
+          desc:'Trabajo del '+fmtFechaCorta(t.fecha)+' · '+esc(t.cuadrilla||'')+' · cobrado $'+cobrado.toLocaleString()+' pero suma de pagos $'+sumaPagos.toLocaleString()+' (diferencia $'+Math.abs(cobrado-sumaPagos).toLocaleString()+')',
+          trabajoId:t.id
+        });
+      }
+    });
+
+    // ── CHECK 4: Trabajo con $0 que no es garantía ──
+    trabs.forEach(t=>{
+      if((parseFloat(t.cobrado||t.total)||0)===0&&!t.es_garantia){
+        alertas.push({
+          tipo:'warning',
+          icono:'🚫',
+          titulo:'Trabajo en $0 sin ser garantía',
+          desc:'Trabajo del '+fmtFechaCorta(t.fecha)+' · '+esc(t.cuadrilla||'')+' — cobrado $0 pero no está marcado como garantía',
+          trabajoId:t.id
+        });
+      }
+    });
+
+    // ── CHECK 5: Cuadrillas sin capturar 3+ días hábiles ──
+    const hoy=new Date();hoy.setHours(0,0,0,0);
+    cuadActivas.forEach(cu=>{
+      const ultTrab=trabs.filter(t=>t.cuadrilla===cu).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+      if(!ultTrab)return;
+      const ultFecha=new Date(ultTrab.fecha+'T12:00:00');
+      let diasHabiles=0;
+      const d=new Date(ultFecha);d.setDate(d.getDate()+1);
+      while(d<=hoy){
+        const dow=d.getDay();
+        if(dow!==0)diasHabiles++; // no contar domingos
+        d.setDate(d.getDate()+1);
+      }
+      if(diasHabiles>=3){
+        alertas.push({
+          tipo:'info',
+          icono:'📅',
+          titulo:'Cuadrilla sin capturar',
+          desc:esc(cu)+' lleva '+diasHabiles+' días hábiles sin registrar trabajo (último: '+fmtFechaCorta(ultTrab.fecha)+')',
+          trabajoId:null
+        });
+      }
+    });
+
+    // Renderizar
+    cont.innerHTML='';
+    const titulo=document.createElement('div');
+    titulo.style.cssText='font-size:13px;color:var(--muted);margin-bottom:14px';
+    titulo.textContent='Últimas 4 semanas · '+trabs.length+' trabajos revisados · '+alertas.length+' alertas';
+    cont.appendChild(titulo);
+
+    if(!alertas.length){
+      const ok=document.createElement('div');
+      ok.style.cssText='text-align:center;padding:40px 20px;font-size:15px;color:var(--green)';
+      ok.innerHTML='✅ Todo se ve bien<div style="font-size:12px;color:var(--muted);margin-top:8px">No se encontraron anomalías en los últimos 4 semanas</div>';
+      cont.appendChild(ok);
+      return;
+    }
+
+    const colores={error:'var(--red)',warning:'var(--orange)',info:'var(--accent2)'};
+    alertas.forEach(a=>{
+      const card=document.createElement('div');
+      card.style.cssText='background:var(--card);border:1px solid var(--border);border-left:3px solid '+colores[a.tipo]+';border-radius:10px;padding:12px 14px;margin-bottom:8px';
+      card.innerHTML='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:14px">'+a.icono+'</span><span style="font-size:13px;font-weight:700;color:'+colores[a.tipo]+'">'+esc(a.titulo)+'</span></div>'+
+        '<div style="font-size:12px;color:var(--muted)">'+esc(a.desc)+'</div>';
+      if(a.trabajoId){
+        const b=document.createElement('button');b.className='btn btn-ghost';b.textContent='Ver trabajo →';b.style.cssText='margin-top:8px;font-size:12px;padding:5px 12px';
+        b.onclick=()=>{editarTrabajo(a.trabajoId);};
+        card.appendChild(b);
+      }
+      cont.appendChild(card);
+    });
+
+  }catch(e){
+    cont.innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
+  }
+}
+
+function fmtFechaCorta(f){
+  if(!f)return '';
+  const d=new Date(f+'T12:00:00');
+  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  return dias[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+}
 
 // ════════ RESUMEN / DASHBOARD (solo admin Eduardo) ════════
 let resumenFiltroCuad='__todas__';
