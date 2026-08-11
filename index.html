@@ -1150,8 +1150,28 @@ const SUR_DEFAULT=[
 const hdrs=()=>({'apikey':KEY_SB,'Authorization':'Bearer '+(authSession?authSession.access_token:KEY_SB),'Content-Type':'application/json','Prefer':'return=representation'});
 function setSyncDot(s){const d=document.getElementById('syncDot');if(d)d.className='sync-dot '+s;}
 async function api(path,opts={}){
+  // Refrescar token si está por expirar (menos de 5 min)
+  if(authSession&&authSession.refresh_token){
+    const exp=authSession.expires_at||0;
+    const now=Math.floor(Date.now()/1000);
+    if(exp-now<300){
+      try{
+        const res=await fetch(URL_SB+'/auth/v1/token?grant_type=refresh_token',{
+          method:'POST',headers:{'Content-Type':'application/json','apikey':KEY_SB},
+          body:JSON.stringify({refresh_token:authSession.refresh_token})
+        });
+        if(res.ok){authSession=await res.json();}
+      }catch(e){}
+    }
+  }
   setSyncDot('syncing');
   try{const r=await fetch(URL_SB+'/rest/v1/'+path,{headers:hdrs(),...opts});
+    if(r.status===401){
+      setSyncDot('error');
+      showToast('Sesión expirada — vuelve a entrar',true);
+      setTimeout(()=>salirDeApp&&salirDeApp(),1500);
+      throw new Error('Sesión expirada (401)');
+    }
     if(!r.ok)throw new Error(await r.text());
     const j=r.status===204?[]:await r.json();setSyncDot('ok');return j;
   }catch(e){setSyncDot('error');throw e;}
