@@ -2100,8 +2100,11 @@ function mostrarSelectorRol(roles){
   });
 }
 
-function entrarConRol(rol){
+async function entrarConRol(rol){
   const nombre=authUsuario.nombre;
+  // Cargar cuadrillas con sesion activa
+  await cargarCuadrillas();
+  refreshCuadrillaSelect();
   // Limpiar TODO el estado de sesiones anteriores
   supervisorActual=null;
   tecnicoActual=null;
@@ -4606,7 +4609,7 @@ function ajustarLayoutTrabajos(){
 }
 window.addEventListener('resize',ajustarLayoutTrabajos);
 document.addEventListener('DOMContentLoaded',ajustarLayoutTrabajos);
-cargarCuadrillas(); // cargar config de cuadrillas al inicio
+// cargarCuadrillas se llama despues del login para tener sesion activa
 
 function toggleMasMenu(e){
   if(e)e.stopPropagation();
