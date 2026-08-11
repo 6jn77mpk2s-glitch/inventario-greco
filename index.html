@@ -4929,10 +4929,11 @@ async function renderCerrarSemanaBar(){
   const sid=semanaId(semanaOffset);
   const cerrada=semanaEstaCerrada(sid);
   if(cerrada){
-    bar.innerHTML='<span style="font-size:12px;color:var(--muted)">🔒 Semana cerrada</span> '+
-      '<button onclick="reabrirSemana(''+sid+'')" style="font-size:11px;padding:3px 10px;background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;cursor:pointer;margin-left:6px">Reabrir</button>';
+    bar.innerHTML='<span style="font-size:12px;color:var(--muted)">🔒 Semana cerrada</span> <button style="font-size:11px;padding:3px 10px;background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;cursor:pointer;margin-left:6px" id="btnReabrirSem">Reabrir</button>';
+    document.getElementById('btnReabrirSem').onclick=()=>reabrirSemana(sid);
   }else{
-    bar.innerHTML='<button onclick="cerrarSemana(''+sid+'')" style="font-size:12px;padding:5px 14px;background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;cursor:pointer">🔒 Cerrar semana</button>';
+    bar.innerHTML='<button style="font-size:12px;padding:5px 14px;background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;cursor:pointer" id="btnCerrarSem">🔒 Cerrar semana</button>';
+    document.getElementById('btnCerrarSem').onclick=()=>cerrarSemana(sid);
   }
 }
 
