@@ -65,7 +65,7 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 .stat-div{width:1px;background:var(--border);align-self:stretch;}
 
 /* TABS */
-.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);}
+.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-shrink:0;}
 .tab{flex:1;padding:11px 4px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:.3px;transition:all .15s;white-space:nowrap;}
 .tab.active{color:var(--accent2);border-bottom-color:var(--accent);}
 
@@ -273,6 +273,8 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
 input, select, textarea { font-size: 16px !important; }
 .pin-input { font-size: 32px !important; }
 #loginEmail { font-size: 16px !important; }
+.tabs::-webkit-scrollbar{display:none;}
+* { box-sizing: border-box; max-width: 100%; }
 </style>
 </head>
 <body>
