@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Inventario — Climas Greco</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -269,6 +269,10 @@ header{background:linear-gradient(135deg,#1a3a5c 0%,#0f2340 100%);padding:16px 1
   .modal{align-items:center;justify-content:center;}
   .modal-sheet{border-radius:20px;max-width:560px;border:1px solid var(--border);}
 }
+/* Prevenir zoom en iOS Safari al tocar inputs */
+input, select, textarea { font-size: 16px !important; }
+.pin-input { font-size: 32px !important; }
+#loginEmail { font-size: 16px !important; }
 </style>
 </head>
 <body>
