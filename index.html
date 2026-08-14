@@ -1156,18 +1156,22 @@ const SUR_DEFAULT=[
 const hdrs=()=>({'apikey':KEY_SB,'Authorization':'Bearer '+(authSession?authSession.access_token:KEY_SB),'Content-Type':'application/json','Prefer':'return=representation'});
 function setSyncDot(s){const d=document.getElementById('syncDot');if(d)d.className='sync-dot '+s;}
 async function api(path,opts={}){
-  // Refrescar token si está por expirar (menos de 5 min)
+  // Refrescar token solo si quedan menos de 5 min Y no lo hemos revisado en los últimos 4 min
   if(authSession&&authSession.refresh_token){
-    const exp=authSession.expires_at||0;
     const now=Math.floor(Date.now()/1000);
-    if(exp-now<300){
-      try{
-        const res=await fetch(URL_SB+'/auth/v1/token?grant_type=refresh_token',{
-          method:'POST',headers:{'Content-Type':'application/json','apikey':KEY_SB},
-          body:JSON.stringify({refresh_token:authSession.refresh_token})
-        });
-        if(res.ok){authSession=await res.json();}
-      }catch(e){}
+    const exp=authSession.expires_at||0;
+    const ultimoCheck=authSession._lastRefreshCheck||0;
+    if(now-ultimoCheck>240){ // solo revisar cada 4 minutos
+      authSession._lastRefreshCheck=now;
+      if(exp-now<300){
+        try{
+          const res=await fetch(URL_SB+'/auth/v1/token?grant_type=refresh_token',{
+            method:'POST',headers:{'Content-Type':'application/json','apikey':KEY_SB},
+            body:JSON.stringify({refresh_token:authSession.refresh_token})
+          });
+          if(res.ok){const d=await res.json();authSession={...d,_lastRefreshCheck:now};}
+        }catch(e){}
+      }
     }
   }
   setSyncDot('syncing');
@@ -3747,8 +3751,8 @@ function actualizarVisibilidadResumen(){
 async function initTrabajos(){
   document.getElementById('trabUserPill').textContent='👤 '+currentUser;
   actualizarVisibilidadResumen();
-  await cargarSemanasCerradas();
-  await loadTarifas(true);
+  // Cargar tarifas y semanas cerradas en paralelo, luego trabajos
+  await Promise.all([cargarSemanasCerradas(),loadTarifas(true)]);
   await loadTrabajos();
 }
 
@@ -4611,24 +4615,26 @@ async function guardarTrabajo(){
       loadTrabajos();
     }else{
       const rows=await api('trabajos',{method:'POST',body:JSON.stringify(payload)});
-      // Descontar material del saldo del técnico de la cuadrilla (solo al crear)
+      // Descontar material y cable en PARALELO (no esperar uno por uno)
+      const promesasMaterial=[];
       for(const d of desgloseItems){
-        if(d.descuentaSaldo&&d.descuentaCant>0){await ajustarMaterialTecnico(cuadrilla,d.descuentaSaldo,-d.descuentaCant);}
+        if(d.descuentaSaldo&&d.descuentaCant>0){
+          promesasMaterial.push(ajustarMaterialTecnico(cuadrilla,d.descuentaSaldo,-d.descuentaCant));
+        }
         if(d.descuentaCableMetros>0){
-          if(d.rolloTipo){await descontarRollo(cuadrilla,d.descuentaCableMetros,d.rolloTipo);}
-          await ajustarCableTecnico(cuadrilla,-d.descuentaCableMetros);
+          if(d.rolloTipo){promesasMaterial.push(descontarRollo(cuadrilla,d.descuentaCableMetros,d.rolloTipo));}
+          promesasMaterial.push(ajustarCableTecnico(cuadrilla,-d.descuentaCableMetros));
         }
       }
-      // Por cada pago por TRANSFERENCIA, crear una transferencia PENDIENTE por asignar
+      // Crear transferencia si aplica (en paralelo con los descuentos)
       const montoTransfer=pagosLimpios.filter(p=>p.forma==='transferencia').reduce((s,p)=>s+(parseFloat(p.monto)||0),0);
       if(montoTransfer>0){
-        try{
-          await api('transferencias',{method:'POST',body:JSON.stringify({
-            fecha, monto:montoTransfer, tecnico:cuadrilla, trabajo_id:rows[0]?rows[0].id:null,
-            concepto:(desgGuardar[0]?desgGuardar[0].nombre:'Trabajo'), estado:'pendiente', cuenta:'', usuario_registro:(modoTecnicoCaptura?tecnicoActual:(currentUser||''))
-          })});
-        }catch(e){}
+        promesasMaterial.push(api('transferencias',{method:'POST',body:JSON.stringify({
+          fecha, monto:montoTransfer, tecnico:cuadrilla, trabajo_id:rows[0]?rows[0].id:null,
+          concepto:(desgGuardar[0]?desgGuardar[0].nombre:'Trabajo'), estado:'pendiente', cuenta:'', usuario_registro:(modoTecnicoCaptura?tecnicoActual:(currentUser||''))
+        })}).catch(e=>{}));
       }
+      await Promise.all(promesasMaterial);
       if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
       // Si es captura de técnico: marcar el trabajo de agenda como completado y bloqueado
       if(modoTecnicoCaptura&&tecCapturaUid){
