@@ -2317,10 +2317,21 @@ function goBack(){
 function irAModulos(){
   document.getElementById('app').style.display='none';
   document.getElementById('trabajosApp').style.display='none';
+  document.getElementById('supervisorApp').style.display='none';
+  document.getElementById('tecnicoApp').style.display='none';
   document.getElementById('branchScreen').classList.remove('show');
   document.getElementById('userScreen').classList.remove('show');
-  document.getElementById('moduleScreen').classList.add('show');
   aires=[];mats=[];trabajos=[];
+  // Si tiene múltiples roles, mostrar selector de rol en vez del selector de módulos
+  if(authUsuario&&(authUsuario.roles||[]).length>1){
+    document.getElementById('moduleScreen').classList.remove('show');
+    document.getElementById('pinScreen').style.display='flex';
+    document.getElementById('loginForm').style.display='none';
+    document.getElementById('loginSub').textContent='¿Cómo quieres entrar?';
+    mostrarSelectorRol(authUsuario.roles);
+  }else{
+    document.getElementById('moduleScreen').classList.add('show');
+  }
 }
 
 // ── LOAD ──
