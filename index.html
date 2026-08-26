@@ -723,17 +723,10 @@ input, select, textarea { font-size: 16px !important; }
       <input type="number" id="trabPagoTec" placeholder="0" inputmode="decimal" oninput="this.dataset.touched=1">
     </div>
 
-    <!-- Ayudante (el select SIEMPRE visible; el pago se oculta en modo técnico) -->
-    <div class="field-row">
-      <div class="field"><label>Ayudante</label>
-        <div style="display:flex;gap:6px">
-          <select id="trabAyudante" style="flex:1"></select>
-          <button class="btn btn-ghost" onclick="addAyudantePrompt()" style="white-space:nowrap">+</button>
-        </div>
-      </div>
-      <div class="field" id="fieldPagoAyu"><label>Pago ayudante</label>
-        <input type="number" id="trabPagoAyu" placeholder="0" inputmode="decimal" oninput="this.dataset.touched=1">
-      </div>
+    <!-- Ayudantes múltiples (sin límite) -->
+    <div id="fieldAyudantes">
+      <div id="ayudantesContainer"></div>
+      <button class="btn btn-ghost" onclick="agregarRenglonAyudante()" style="margin-top:4px;width:100%;font-size:13px">+ Agregar ayudante</button>
     </div>
 
     <!-- Pago atrasado — oculto en modo técnico -->
@@ -4010,12 +4003,20 @@ function editarTrabajo(id){
   renderPagosList();
   // ayudante
   refreshAyudanteSelect();
-  const ayu=t.ayudante_nombre||t.ayudante||'';
-  if(ayu&&!ayudantes.includes(ayu)){ayudantes.push(ayu);refreshAyudanteSelect();}
-  document.getElementById('trabAyudante').value=ayu;
+  const ayuStr=t.ayudante_nombre||t.ayudante||'';
+  // Cargar ayudantes múltiples desde string "Marcos, Wicho"
+  resetAyudantesRenglones();
+  const pagoAyuTotal=parseFloat(t.pago_ayudante)||0;
+  if(ayuStr.trim()){
+    const nombres=ayuStr.split(',').map(s=>s.trim()).filter(Boolean);
+    const pagoPorUno=nombres.length>0?Math.round(pagoAyuTotal/nombres.length):0;
+    nombres.forEach(nombre=>{
+      if(!ayudantes.includes(nombre))ayudantes.push(nombre);
+      agregarRenglonAyudante(nombre,pagoPorUno,true);
+    });
+  }
   // pagos
   const pt=document.getElementById('trabPagoTec');pt.value=parseFloat(t.pago_tecnico)||0;pt.dataset.touched='1';
-  const pa=document.getElementById('trabPagoAyu');pa.value=parseFloat(t.pago_ayudante)||0;pa.dataset.touched='1';
   document.getElementById('trabPagoAtras').value=parseFloat(t.pago_atrasado)||0;
   document.getElementById('trabPagoAtrasNota').value=t.pago_atrasado_nota||'';
   // supervisor
@@ -4067,7 +4068,7 @@ let tecCapturaUid=null; // uid del trabajo de agenda que se está capturando
 function aplicarModoTecnicoUI(on){
   // oculta/muestra campos de pago según el modo
   document.getElementById('fieldPagoTec').style.display=on?'none':'';
-  document.getElementById('fieldPagoAyu').style.display=on?'none':'';
+  document.getElementById('fieldAyudantes').style.display=on?'none':'';
   document.getElementById('rowPagoAtras').style.display=on?'none':'';
   document.getElementById('rowSupervisor').style.display=on?'none':'';
   // bloquear cambio de cuadrilla en modo técnico
@@ -4101,13 +4102,12 @@ function openTrabajoModal(){
   document.getElementById('trabCuadrilla').value=tecnicos.includes(currentUser)?currentUser:'';
   document.getElementById('trabFactura').checked=false;
   document.getElementById('trabPagoTec').value='';document.getElementById('trabPagoTec').dataset.touched='';
-  document.getElementById('trabPagoAyu').value='';document.getElementById('trabPagoAyu').dataset.touched='';
   document.getElementById('trabPagoAtras').value='';
   document.getElementById('trabPagoAtrasNota').value='';
   document.getElementById('trabSupervisor').value='';
   document.getElementById('trabPagoSup').value='';document.getElementById('trabPagoSup').dataset.touched='';
   document.getElementById('trabNota').value='';
-  refreshAyudanteSelect();
+  resetAyudantesRenglones();
   pagosItems=[{forma:'efectivo',quien:'',monto:0}];
   renderPagosList();
   desgloseItems=[];
@@ -4223,19 +4223,78 @@ function autollenarPagoUnico(){
     if(total>0){pagosItems[0].monto=total;renderPagosList();}
   }
 }
-function refreshAyudanteSelect(){
-  const sel=document.getElementById('trabAyudante');
-  sel.innerHTML='<option value="">— Sin ayudante —</option>';
-  ayudantes.forEach(a=>{const o=document.createElement('option');o.value=a;o.textContent=a;sel.appendChild(o);});
+// ── SISTEMA DE MÚLTIPLES AYUDANTES ──
+let ayudantesRenglones=[]; // [{nombre, pago, touched}]
+
+function renderAyudantesContainer(){
+  const cont=document.getElementById('ayudantesContainer');
+  if(!cont)return;
+  cont.innerHTML='';
+  ayudantesRenglones.forEach((item,idx)=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:6px';
+    // Select de nombre
+    const sel=document.createElement('select');
+    sel.style.cssText='flex:1;min-width:0';
+    sel.innerHTML='<option value="">— Sin ayudante —</option>';
+    ayudantes.forEach(a=>{
+      const o=document.createElement('option');
+      o.value=a;o.textContent=a;
+      if(a===item.nombre)o.selected=true;
+      sel.appendChild(o);
+    });
+    // Botón agregar nuevo nombre
+    const btnNew=document.createElement('button');
+    btnNew.className='btn btn-ghost';
+    btnNew.textContent='+';
+    btnNew.style.cssText='white-space:nowrap;padding:0 8px';
+    btnNew.type='button';
+    // Pago
+    const inp=document.createElement('input');
+    inp.type='number';
+    inp.inputMode='decimal';
+    inp.placeholder='0';
+    inp.value=item.pago||'';
+    inp.style.cssText='width:80px;flex-shrink:0';
+    if(item.touched)inp.dataset.touched='1';
+    // Botón eliminar
+    const btnDel=document.createElement('button');
+    btnDel.className='btn btn-ghost';
+    btnDel.innerHTML='<span style="color:var(--red)">✕</span>';
+    btnDel.style.cssText='white-space:nowrap;padding:0 8px;flex-shrink:0';
+    btnDel.type='button';
+    // Eventos
+    sel.onchange=()=>{ayudantesRenglones[idx].nombre=sel.value;};
+    inp.oninput=()=>{ayudantesRenglones[idx].pago=parseFloat(inp.value)||0;ayudantesRenglones[idx].touched=true;};
+    btnNew.onclick=async()=>{
+      const n=await uiInput('Nombre del ayudante',{tipo:'texto',placeholder:'ej. Wicho'});
+      if(!n)return;
+      const nombre=n.trim();
+      if(nombre&&!ayudantes.includes(nombre))ayudantes.push(nombre);
+      ayudantesRenglones[idx].nombre=nombre;
+      renderAyudantesContainer();
+    };
+    btnDel.onclick=()=>{ayudantesRenglones.splice(idx,1);renderAyudantesContainer();};
+    row.appendChild(sel);
+    row.appendChild(btnNew);
+    row.appendChild(inp);
+    row.appendChild(btnDel);
+    cont.appendChild(row);
+  });
 }
-async function addAyudantePrompt(){
-  const n=await uiInput('Nombre del ayudante',{tipo:'texto',placeholder:'ej. Wicho'});
-  if(!n)return;
-  const nombre=n.trim();
-  if(nombre&&!ayudantes.includes(nombre))ayudantes.push(nombre);
-  refreshAyudanteSelect();
-  document.getElementById('trabAyudante').value=nombre;
+
+function agregarRenglonAyudante(nombre='',pago=0,touched=false){
+  ayudantesRenglones.push({nombre,pago,touched});
+  renderAyudantesContainer();
 }
+
+function resetAyudantesRenglones(){
+  ayudantesRenglones=[];
+  renderAyudantesContainer();
+}
+
+// Compatibilidad con código viejo que llama refreshAyudanteSelect
+function refreshAyudanteSelect(){ renderAyudantesContainer(); }
 
 // ── AGREGAR RENGLÓN: elegir tipo ──
 async function addDesgloseRow(){
@@ -4491,9 +4550,12 @@ function recalcTrabajo(){
   });
   // llenar campos si están vacíos o si el usuario no los ha tocado manualmente
   const campoTec=document.getElementById('trabPagoTec');
-  const campoAyu=document.getElementById('trabPagoAyu');
   if(!campoTec.dataset.touched)campoTec.value=sugTec||'';
-  if(!campoAyu.dataset.touched)campoAyu.value=sugAyu||'';
+  // Sugerir pago a cada ayudante que no haya tocado manualmente su monto
+  ayudantesRenglones.forEach((item,idx)=>{
+    if(!item.touched){ayudantesRenglones[idx].pago=sugAyu||0;}
+  });
+  renderAyudantesContainer();
   document.getElementById('sugTecnico').textContent=sugTec?'(sugerido $'+sugTec+')':'';
   // ── Comisión de supervisor ──
   const sugSup=calcComisionSupervisor(cuad);
@@ -4532,7 +4594,9 @@ async function guardarTrabajo(){
   if(!fecha){alert('Selecciona la fecha');return;}
   const cuadrilla=document.getElementById('trabCuadrilla').value;
   if(!cuadrilla){alert('Selecciona la cuadrilla (técnico)');return;}
-  const ayudante=document.getElementById('trabAyudante').value;
+  // Múltiples ayudantes: filtrar los que tienen nombre
+  const ayudantesActivos=ayudantesRenglones.filter(a=>a.nombre&&a.nombre.trim()!=='');
+  const ayudante=ayudantesActivos.map(a=>a.nombre).join(', ');
   recalcCable();
   if(!desgloseItems.length){alert('Agrega al menos un renglón');return;}
   let {subtotal,iva,total}=recalcTrabajo();
@@ -4556,7 +4620,7 @@ async function guardarTrabajo(){
   const forma=principal?principal.forma:(modoGarantia?'garantia':'efectivo');
   const quienCobra=principal&&principal.forma==='cobra_otro'?principal.quien:'';
   let pagoTec=parseFloat(document.getElementById('trabPagoTec').value)||0;
-  let pagoAyu=parseFloat(document.getElementById('trabPagoAyu').value)||0;
+  let pagoAyu=ayudantesActivos.reduce((s,a)=>s+(parseFloat(a.pago)||0),0);
   // En modo técnico los campos están ocultos: calcular el pago siempre con las tarifas
   if(modoTecnicoCaptura){
     const grupo=grupoDe(cuadrilla);
@@ -4569,7 +4633,7 @@ async function guardarTrabajo(){
       }
     });
     pagoTec=st;
-    pagoAyu=(ayudante&&ayudante!=='')?sa:0; // solo paga ayudante si eligió uno
+    pagoAyu=ayudantesActivos.length>0?sa*ayudantesActivos.length:0; // pago por cada ayudante
   }
   const pagoAtras=parseFloat(document.getElementById('trabPagoAtras').value)||0;
   const pagoAtrasNota=document.getElementById('trabPagoAtrasNota').value.trim();
