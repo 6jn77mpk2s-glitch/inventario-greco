@@ -4284,6 +4284,11 @@ function renderAyudantesContainer(){
 }
 
 function agregarRenglonAyudante(nombre='',pago=0,touched=false){
+  // Si no se pasa pago explícito, tomar el sugerido actual del label
+  if(!touched && pago===0){
+    const lbl=document.getElementById('sugAyudante');
+    if(lbl&&lbl.dataset.monto)pago=parseFloat(lbl.dataset.monto)||0;
+  }
   ayudantesRenglones.push({nombre,pago,touched});
   renderAyudantesContainer();
 }
@@ -4557,6 +4562,10 @@ function recalcTrabajo(){
   });
   renderAyudantesContainer();
   document.getElementById('sugTecnico').textContent=sugTec?'(sugerido $'+sugTec+')':'';
+  // Guardar monto sugerido de ayudante para nuevos renglones
+  let lblAyu=document.getElementById('sugAyudante');
+  if(!lblAyu){lblAyu=document.createElement('span');lblAyu.id='sugAyudante';lblAyu.style.display='none';document.body.appendChild(lblAyu);}
+  lblAyu.dataset.monto=sugAyu||0;
   // ── Comisión de supervisor ──
   const sugSup=calcComisionSupervisor(cuad);
   const campoSup=document.getElementById('trabPagoSup');
