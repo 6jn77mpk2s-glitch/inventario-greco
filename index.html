@@ -3823,8 +3823,14 @@ async function loadTrabajos(){
   document.getElementById('listSemana').innerHTML='<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try{
     trabajos=await api('trabajos?select=*&semana=eq.'+sid+'&usuario=eq.'+encodeURIComponent(currentUser||'')+'&order=fecha.asc,id.asc');
-    // recopilar ayudantes vistos
-    trabajos.forEach(t=>{if(t.ayudante&&!ayudantes.includes(t.ayudante))ayudantes.push(t.ayudante);});
+    // recopilar ayudantes vistos (separar nombres compuestos "Marcos, Cruz" → dos entradas)
+    trabajos.forEach(t=>{
+      if(t.ayudante){
+        t.ayudante.split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>{
+          if(!ayudantes.includes(n))ayudantes.push(n);
+        });
+      }
+    });
     renderSemana();renderResumenSemana();
   }catch(e){
     document.getElementById('listSemana').innerHTML='<div class="loading" style="color:var(--red)">Error: '+e.message+'</div>';
@@ -4299,7 +4305,18 @@ function resetAyudantesRenglones(){
 }
 
 // Compatibilidad con código viejo que llama refreshAyudanteSelect
-function refreshAyudanteSelect(){ renderAyudantesContainer(); }
+function refreshAyudanteSelect(){
+  // Asegurarse de que ningún nombre en ayudantes contenga comas (nombres compuestos viejos)
+  const expandidos=[];
+  ayudantes.forEach(a=>{
+    a.split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>{
+      if(!expandidos.includes(n))expandidos.push(n);
+    });
+  });
+  ayudantes.length=0;
+  expandidos.forEach(n=>ayudantes.push(n));
+  renderAyudantesContainer();
+}
 
 // ── AGREGAR RENGLÓN: elegir tipo ──
 async function addDesgloseRow(){
@@ -4681,7 +4698,7 @@ async function guardarTrabajo(){
       editPayload.editado_por=quienEdita;
       editPayload.editado_fecha=new Date().toISOString();
       await api('trabajos?id=eq.'+editandoTrabajoId,{method:'PATCH',body:JSON.stringify(editPayload)});
-      if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
+      if(ayudante)ayudante.split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>{if(!ayudantes.includes(n))ayudantes.push(n);});
       closeTrabModal();
       showToast('Trabajo actualizado ✓');
       editandoTrabajoId=null;
@@ -4708,7 +4725,7 @@ async function guardarTrabajo(){
         })}).catch(e=>{}));
       }
       await Promise.all(promesasMaterial);
-      if(ayudante&&!ayudantes.includes(ayudante))ayudantes.push(ayudante);
+      if(ayudante)ayudante.split(',').map(s=>s.trim()).filter(Boolean).forEach(n=>{if(!ayudantes.includes(n))ayudantes.push(n);});
       // Si es captura de técnico: marcar el trabajo de agenda como completado y bloqueado
       if(modoTecnicoCaptura&&tecCapturaUid){
         try{ await guardarEstadoTecnico(tecCapturaUid,{estado:'instalado',completado:true,auth_estado:'',capturado:true}); }catch(e){}
