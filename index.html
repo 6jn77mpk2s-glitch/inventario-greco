@@ -1508,7 +1508,16 @@ async function renderSupPagosResumen(list){
     let tot=0;
     supTrabajos.filter(t=>t.fecha===fecha).forEach(t=>{
       if(rol==='tec'&&t.cuadrilla===nombre)tot+=parseFloat(t.pago_tecnico)||0;
-      if(rol==='ayu'&&(t.ayudante_nombre===nombre||t.ayudante===nombre))tot+=parseFloat(t.pago_ayudante)||0;
+      if(rol==='ayu'){
+        const ayn=t.ayudante_nombre||t.ayudante||'';
+        const ayp=parseFloat(t.pago_ayudante)||0;
+        if(ayn&&ayp>0){
+          const nombres=ayn.split(',').map(s=>s.trim()).filter(Boolean);
+          if(nombres.includes(nombre)){
+            tot+=Math.round(ayp/nombres.length);
+          }
+        }
+      }
     });
     return tot;
   }
