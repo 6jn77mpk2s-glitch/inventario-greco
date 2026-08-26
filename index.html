@@ -1433,14 +1433,18 @@ async function renderSupPagosResumen(list){
     const yaPagTec=(pagadosPorPersona[cu]||[]).includes(t.fecha);
     if(yaPagTec){resumen[cu].pagado+=(parseFloat(t.pago_tecnico)||0);if(!resumen[cu].diasPag.includes(t.fecha))resumen[cu].diasPag.push(t.fecha);}
     else{resumen[cu].pendiente+=(parseFloat(t.pago_tecnico)||0);if(!resumen[cu].diasPend.includes(t.fecha))resumen[cu].diasPend.push(t.fecha);}
-    // Ayudante
+    // Ayudante(s) — separar nombres compuestos "Marcos, Cruz"
     const ayn=t.ayudante_nombre||t.ayudante||'';
     const ayp=parseFloat(t.pago_ayudante)||0;
     if(ayn&&ayp>0){
-      if(!resumen[ayn])resumen[ayn]={rol:'ayu',pendiente:0,pagado:0,diasPend:[],diasPag:[]};
-      const yaPagAyu=(pagadosPorPersona[ayn]||[]).includes(t.fecha);
-      if(yaPagAyu){resumen[ayn].pagado+=ayp;if(!resumen[ayn].diasPag.includes(t.fecha))resumen[ayn].diasPag.push(t.fecha);}
-      else{resumen[ayn].pendiente+=ayp;if(!resumen[ayn].diasPend.includes(t.fecha))resumen[ayn].diasPend.push(t.fecha);}
+      const nombres=ayn.split(',').map(s=>s.trim()).filter(Boolean);
+      const pagoPorUno=nombres.length>0?Math.round(ayp/nombres.length):0;
+      nombres.forEach(nombre=>{
+        if(!resumen[nombre])resumen[nombre]={rol:'ayu',pendiente:0,pagado:0,diasPend:[],diasPag:[]};
+        const yaPagAyu=(pagadosPorPersona[nombre]||[]).includes(t.fecha);
+        if(yaPagAyu){resumen[nombre].pagado+=pagoPorUno;if(!resumen[nombre].diasPag.includes(t.fecha))resumen[nombre].diasPag.push(t.fecha);}
+        else{resumen[nombre].pendiente+=pagoPorUno;if(!resumen[nombre].diasPend.includes(t.fecha))resumen[nombre].diasPend.push(t.fecha);}
+      });
     }
   });
 
@@ -1560,7 +1564,11 @@ function buildPagosCuad(trabajos){
     const ayn=t.ayudante_nombre||t.ayudante||'';
     const ayp=parseFloat(t.pago_ayudante)||0;
     if(ayn&&ayp>0){
-      porCuad[cu].ayudantes[ayn]=(porCuad[cu].ayudantes[ayn]||0)+ayp;
+      const nombres=ayn.split(',').map(s=>s.trim()).filter(Boolean);
+      const pagoPorUno=nombres.length>0?Math.round(ayp/nombres.length):0;
+      nombres.forEach(nombre=>{
+        porCuad[cu].ayudantes[nombre]=(porCuad[cu].ayudantes[nombre]||0)+pagoPorUno;
+      });
     }else if(ayp>0){
       porCuad[cu].ayudantes['Ayudante']=(porCuad[cu].ayudantes['Ayudante']||0)+ayp;
     }
@@ -3932,7 +3940,14 @@ function buildTrabajoCard(t){
   if(!modoTecnicoCaptura){
     detHtml+='<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px">Pagos</div>';
     detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>👷 Técnico</span><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(t.pago_tecnico)||0).toLocaleString()+'</span></div>';
-    if(ayuNom)detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>🤝 Ayudante ('+esc(ayuNom)+')</span><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(t.pago_ayudante)||0).toLocaleString()+'</span></div>';
+    if(ayuNom){
+      const nombres=ayuNom.split(',').map(s=>s.trim()).filter(Boolean);
+      const ayuTotal=parseFloat(t.pago_ayudante)||0;
+      const pagoPorUno=nombres.length>0?Math.round(ayuTotal/nombres.length):0;
+      nombres.forEach(nombre=>{
+        detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>🤝 Ayudante ('+esc(nombre)+')</span><span style="font-family:var(--mono);color:var(--orange)">$'+pagoPorUno.toLocaleString()+'</span></div>';
+      });
+    }
     if(parseFloat(t.pago_atrasado)>0)detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>Atrasado'+(t.pago_atrasado_nota?' ('+esc(t.pago_atrasado_nota)+')':'')+'</span><span style="font-family:var(--mono);color:var(--orange)">$'+(parseFloat(t.pago_atrasado)||0).toLocaleString()+'</span></div>';
     if(parseFloat(t.pago_supervisor)>0)detHtml+='<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span>🧑\u200d💼 Supervisor ('+esc(t.supervisor||'')+')</span><span style="font-family:var(--mono);color:#c084fc">$'+(parseFloat(t.pago_supervisor)||0).toLocaleString()+'</span></div>';
   }
