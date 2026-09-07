@@ -7407,7 +7407,8 @@ async function guardarRegistroMirage(){
     cerrarModalMirage();
     if(_mirageResolve){ _mirageResolve(true); _mirageResolve=null; }
   }catch(e){
-    showToast('Error al guardar — intenta de nuevo',true);
+    showToast('Error: '+( e&&e.message?e.message:JSON.stringify(e)),true);
+    console.error('Error guardarRegistroMirage:',e);
     btn.textContent='✅ Guardar registro'; btn.disabled=false;
   }
 }
@@ -7447,13 +7448,13 @@ async function renderPendientesMirage(contenedor){
         </div>
         ${r.foto_url?`<div style="margin-bottom:10px">
           <div style="font-size:10px;color:#3b82f6;margin-bottom:6px;font-weight:700">📷 CONDENSADOR (MIRAGE)</div>
-          <img src="${r.foto_url}" onclick="window.open('${r.foto_url}','_blank')"
-            style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;cursor:pointer" onerror="this.style.display='none'">
+          <img src="${r.foto_url}" onclick="abrirFotoMirage('${r.foto_url}')"
+            style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent" onerror="this.style.display='none'">
         </div>`:''}
         ${r.nota_foto_url?`<div style="margin-bottom:10px">
           <div style="font-size:10px;color:#22c55e;margin-bottom:6px;font-weight:700">📋 NOTA INTERNA</div>
-          <img src="${r.nota_foto_url}" onclick="window.open('${r.nota_foto_url}','_blank')"
-            style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;cursor:pointer" onerror="this.style.display='none'">
+          <img src="${r.nota_foto_url}" onclick="abrirFotoMirage('${r.nota_foto_url}')"
+            style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent" onerror="this.style.display='none'">
         </div>`:''}
         <div style="display:flex;gap:8px;margin-bottom:12px">
           ${mapsUrl?`<a href="${mapsUrl}" target="_blank" style="flex:1;padding:8px;border-radius:8px;background:var(--surface);color:var(--accent2,#3b82f6);text-align:center;font-size:12px;text-decoration:none">📍 Ver ubicación</a>`:''}
@@ -7467,6 +7468,17 @@ async function renderPendientesMirage(contenedor){
     });
     contenedor.innerHTML=html;
   }catch(e){ contenedor.innerHTML='<div style="color:#ef4444;font-size:13px;padding:20px">Error al cargar registros.</div>'; }
+}
+
+function abrirFotoMirage(url){
+  // Safari iOS bloquea window.open en onclick — usar elemento <a> temporal
+  const a=document.createElement('a');
+  a.href=url;
+  a.target='_blank';
+  a.rel='noopener';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>document.body.removeChild(a),100);
 }
 
 function copiarSerieMirage(serie,btn){
