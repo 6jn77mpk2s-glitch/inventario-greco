@@ -7498,7 +7498,7 @@ async function renderPendientesMirage(contenedor){
             ${r.nota_foto_url?`<div style="flex:1;min-width:0"><div style="font-size:9px;color:#4ade80;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px">Nota interna</div><img src="${r.nota_foto_url}" onclick="abrirFotoMirage('${r.nota_foto_url}')" style="width:100%;height:72px;object-fit:cover;border-radius:8px;cursor:pointer" onerror="this.style.display='none'"></div>`:''}
           </div>`:''}
           <div style="padding:10px 14px;display:flex;gap:8px;align-items:center">
-            ${mapsUrl?`<button onclick="abrirFotoMirage('${mapsUrl}')" style="padding:6px 10px;border-radius:7px;background:rgba(255,255,255,.05);color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.08);cursor:pointer;font-size:11px">📍 GPS</button>`:''}
+            ${mapsUrl?`<button onclick="abrirMaps('${mapsUrl}')" style="padding:6px 10px;border-radius:7px;background:rgba(255,255,255,.05);color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.08);cursor:pointer;font-size:11px">📍 GPS</button>`:''}
             ${r.notas?`<div style="flex:1;font-size:11px;color:rgba(255,255,255,.3);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.notas}</div>`:'<div style="flex:1"></div>'}
             ${esPendiente?`<button onclick="marcarRegistradoMirage('${r.id}',this)" style="padding:6px 12px;border-radius:8px;background:rgba(34,197,94,.12);color:#4ade80;border:1px solid rgba(34,197,94,.25);cursor:pointer;font-size:11px;font-weight:700">✓ Registrado</button>`:`<div style="font-size:10px;color:rgba(34,197,94,.4)">✓ Hecho</div>`}
           </div>
@@ -7507,6 +7507,11 @@ async function renderPendientesMirage(contenedor){
     });
     contenedor.innerHTML=html;
   }catch(e){ contenedor.innerHTML='<div style="color:#ef4444;font-size:13px;padding:20px">Error al cargar registros.</div>'; }
+}
+
+function abrirMaps(url){
+  // Abrir Google Maps — usar location.href para iOS
+  window.location.href=url;
 }
 
 function abrirFotoMirage(url){
