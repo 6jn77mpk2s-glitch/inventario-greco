@@ -7471,15 +7471,27 @@ async function renderPendientesMirage(contenedor){
 }
 
 function abrirFotoMirage(url){
-  // Safari iOS bloquea window.open en onclick — usar elemento <a> temporal
-  const a=document.createElement('a');
-  a.href=url;
-  a.target='_blank';
-  a.rel='noopener';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(()=>document.body.removeChild(a),100);
+  // Visor fullscreen dentro de la misma app — funciona en Safari iOS
+  let visor=document.getElementById('mirageVisorFoto');
+  if(!visor){
+    visor=document.createElement('div');
+    visor.id='mirageVisorFoto';
+    visor.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.97);display:flex;align-items:center;justify-content:center;flex-direction:column';
+    visor.innerHTML=`
+      <div style="position:absolute;top:16px;right:16px;z-index:2">
+        <button onclick="document.getElementById('mirageVisorFoto').style.display='none'"
+          style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:24px;width:44px;height:44px;border-radius:50%;cursor:pointer">✕</button>
+      </div>
+      <img id="mirageVisorImg" style="max-width:100%;max-height:90vh;object-fit:contain;border-radius:8px">
+      <div style="margin-top:12px;font-size:12px;color:rgba(255,255,255,.4)">Toca ✕ para cerrar</div>
+    `;
+    document.body.appendChild(visor);
+  }
+  document.getElementById('mirageVisorImg').src=url;
+  visor.style.display='flex';
 }
+
+
 
 function copiarSerieMirage(serie,btn){
   navigator.clipboard.writeText(serie).then(()=>{ showToast('Código copiado ✓'); if(btn){const t=btn.textContent;btn.textContent='✓ Copiado';setTimeout(()=>btn.textContent=t,2000);} }).catch(()=>{
