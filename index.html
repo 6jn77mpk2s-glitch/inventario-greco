@@ -7261,9 +7261,29 @@ function detenerEscaneoMirage(){
 
 function previsualizarFotoMirage(e){
   const file=e.target.files[0]; if(!file)return;
-  _mirageFotoBlob=file;
+  const prev=document.getElementById('mirageFotoPreview');
+  prev.innerHTML='<span style="font-size:13px;color:var(--muted)">Comprimiendo...</span>';
   const reader=new FileReader();
-  reader.onload=ev=>{ _mirageFotoBase64=ev.target.result; document.getElementById('mirageFotoPreview').innerHTML=`<img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`; };
+  reader.onload=function(ev){
+    const img=new Image();
+    img.onload=function(){
+      const MAX=1200;
+      let w=img.width,h=img.height;
+      if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      const base64=canvas.toDataURL('image/jpeg',0.75);
+      const arr=base64.split(','),mime=arr[0].match(/:(.*?);/)[1];
+      const bstr=atob(arr[1]);let n=bstr.length;
+      const u8=new Uint8Array(n);while(n--)u8[n]=bstr.charCodeAt(n);
+      _mirageFotoBlob=new Blob([u8],{type:mime});
+      _mirageFotoBase64=base64;
+      prev.innerHTML='<img src="'+base64+'" style="width:100%;height:100%;object-fit:cover;border-radius:8px">';
+      showToast('Foto lista ('+Math.round(_mirageFotoBlob.size/1024)+' KB) \u2713');
+    };
+    img.src=ev.target.result;
+  };
   reader.readAsDataURL(file);
 }
 
