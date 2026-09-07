@@ -376,6 +376,10 @@ input, select, textarea { font-size: 16px !important; }
       <div class="tab" id="supTabPagos" onclick="switchSupTab('pagos')">💵 PAGOS</div>
       <div class="tab" id="supTabCorte" onclick="switchSupTab('corte')">💰 CORTE</div>
       <div class="tab" id="supTabMaterial" onclick="switchSupTab('material')">📦 MATERIAL</div>
+      <div class="tab" id="supTabMirage" onclick="switchSupTab('mirage')" style="position:relative">
+        🏷️ MIRAGE
+        <span id="mirageBadge" style="display:none;position:absolute;top:4px;right:4px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:700;align-items:center;justify-content:center"></span>
+      </div>
     </div>
   </header>
 
@@ -403,6 +407,14 @@ input, select, textarea { font-size: 16px !important; }
   <!-- MATERIAL -->
   <div id="supSecMaterial" style="display:none;padding:12px">
     <div id="supListMaterial"></div>
+  </div>
+
+  <!-- MIRAGE — solo visible para admin -->
+  <div id="supSecMirage" style="display:none;padding:12px">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Equipos registrados por los técnicos — listos para subir a la app de Mirage
+    </div>
+    <div id="supListMirage" data-mirage-panel></div>
   </div>
 </div>
 
@@ -1288,6 +1300,7 @@ async function entrarComoSupervisor(nombre){
   document.getElementById('supBienvenida').textContent='👔 Bienvenido, '+nombre;
   switchSupTab('semana');
   await loadSupSemana();
+  actualizarBadgeMirage(); // badge de pendientes Mirage
 }
 
 function salirSupervisor(){
@@ -1298,13 +1311,32 @@ function salirSupervisor(){
 }
 
 function switchSupTab(t){
-  ['semana','pagos','corte','material'].forEach(s=>{
+  ['semana','pagos','corte','material','mirage'].forEach(s=>{
     document.getElementById('supSec'+s.charAt(0).toUpperCase()+s.slice(1)).style.display=t===s?'block':'none';
     document.getElementById('supTab'+s.charAt(0).toUpperCase()+s.slice(1)).className='tab'+(t===s?' active':'');
   });
   if(t==='pagos')renderSupPagos();
   if(t==='corte'){renderSupCorte().catch(e=>console.error(e));}
   if(t==='material')loadSupMaterial();
+  if(t==='mirage'){
+    const panel=document.getElementById('supListMirage');
+    if(panel)renderPendientesMirage(panel);
+  }
+}
+
+// Mostrar badge con cantidad de pendientes Mirage
+async function actualizarBadgeMirage(){
+  try{
+    const rows=await api('registros_mirage?select=id,registrado_mirage&registrado_mirage=eq.false');
+    const badge=document.getElementById('mirageBadge');
+    if(!badge)return;
+    if(rows.length>0){
+      badge.textContent=rows.length;
+      badge.style.display='flex';
+    } else {
+      badge.style.display='none';
+    }
+  }catch(e){}
 }
 
 async function loadSupSemana(){
@@ -1950,7 +1982,9 @@ async function tecTerminarTrabajo(ev){
   if(tipo==='garantia'){ await terminarGarantia(ev); return; }
   // 1) preguntar qué aire se instaló (como en agenda) y descontarlo
   await ligarAireInstaladoTec(ev,tecnicoActual);
-  // 2) abrir el formulario de captura en modo técnico
+  // 2) Registro de equipo para Mirage (invisible para el técnico)
+  await mostrarModalMirage(ev);
+  // 3) abrir el formulario de captura en modo técnico
   abrirCapturaTecnico(ev);
 }
 
@@ -7123,6 +7157,227 @@ async function registrarGastoCable(tecnico){
   showToast('Registrado: -'+metros+'m');
 }
 
+// ══════════════════════════════════════════════════════════════
+// MÓDULO REGISTRO MIRAGE — invisible para técnicos
+// ══════════════════════════════════════════════════════════════
+
+function inyectarModalMirage(){
+  if(document.getElementById('modalMirage'))return;
+  const m=document.createElement('div');
+  m.id='modalMirage';
+  m.style.cssText='display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);align-items:center;justify-content:center;';
+  m.innerHTML=`
+    <div style="background:var(--surface,#1e1e2e);border-radius:20px;padding:24px;width:92%;max-width:420px;box-shadow:0 8px 40px rgba(0,0,0,.6);max-height:90vh;overflow-y:auto">
+      <div style="font-size:18px;font-weight:700;margin-bottom:6px;color:var(--text,#fff)">📋 Datos del equipo instalado</div>
+      <div style="font-size:12px;color:var(--muted,#aaa);margin-bottom:20px">Escanea el código de serie y toma la foto del equipo</div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">Código de serie *</label>
+        <div style="display:flex;gap:8px">
+          <input id="mirageSerieInput" type="text" placeholder="Escanea o escribe el código"
+            style="flex:1;padding:12px;border-radius:10px;border:1.5px solid var(--border,#333);background:var(--card,#2a2a3e);color:var(--text,#fff);font-size:14px;box-sizing:border-box">
+          <button onclick="iniciarEscaneoMirage()"
+            style="padding:12px 14px;border-radius:10px;background:var(--accent2,#3b82f6);color:#fff;border:none;font-size:18px;cursor:pointer">📷</button>
+        </div>
+        <div id="mirageEscanerBox" style="display:none;margin-top:10px;position:relative">
+          <video id="mirageVideo" autoplay playsinline muted
+            style="width:100%;border-radius:10px;max-height:200px;object-fit:cover;background:#000"></video>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+            <div style="border:2px solid #3b82f6;border-radius:8px;width:70%;height:50%;opacity:.7"></div>
+          </div>
+          <button onclick="detenerEscaneoMirage()"
+            style="margin-top:8px;width:100%;padding:10px;border-radius:10px;background:#ef4444;color:#fff;border:none;cursor:pointer;font-size:13px">✕ Cancelar escaneo</button>
+        </div>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">Foto de evidencia *</label>
+        <input id="mirageFotoInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="previsualizarFotoMirage(event)">
+        <div id="mirageFotoPreview" onclick="document.getElementById('mirageFotoInput').click()"
+          style="width:100%;height:130px;border-radius:10px;border:2px dashed var(--border,#444);display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--card,#2a2a3e);color:var(--muted,#aaa);font-size:13px;flex-direction:column;gap:6px;overflow:hidden">
+          <span style="font-size:28px">📷</span><span>Toca para tomar foto</span>
+        </div>
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">Nota (opcional)</label>
+        <input id="mirageNotaInput" type="text" placeholder="ej. Cuarto principal, 2a planta..."
+          style="width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--border,#333);background:var(--card,#2a2a3e);color:var(--text,#fff);font-size:14px;box-sizing:border-box">
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="cancelarRegistroMirage()"
+          style="flex:1;padding:14px;border-radius:10px;background:var(--card,#2a2a3e);color:var(--muted,#aaa);border:1.5px solid var(--border,#333);cursor:pointer;font-size:14px">Omitir</button>
+        <button id="mirageGuardarBtn" onclick="guardarRegistroMirage()"
+          style="flex:2;padding:14px;border-radius:10px;background:#22c55e;color:#fff;border:none;cursor:pointer;font-size:14px;font-weight:700">✅ Guardar registro</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+let _mirageResolve=null,_mirageEv=null,_mirageStream=null,_mirageFotoBlob=null,_mirageFotoBase64=null;
+
+function mostrarModalMirage(ev){
+  inyectarModalMirage();
+  _mirageEv=ev; _mirageFotoBlob=null; _mirageFotoBase64=null;
+  document.getElementById('mirageSerieInput').value='';
+  document.getElementById('mirageNotaInput').value='';
+  document.getElementById('mirageFotoPreview').innerHTML='<span style="font-size:28px">📷</span><span>Toca para tomar foto</span>';
+  document.getElementById('mirageEscanerBox').style.display='none';
+  document.getElementById('mirageGuardarBtn').textContent='✅ Guardar registro';
+  document.getElementById('mirageGuardarBtn').disabled=false;
+  document.getElementById('modalMirage').style.display='flex';
+  return new Promise(r=>{ _mirageResolve=r; });
+}
+
+function cerrarModalMirage(){ detenerEscaneoMirage(); document.getElementById('modalMirage').style.display='none'; }
+function cancelarRegistroMirage(){ cerrarModalMirage(); if(_mirageResolve){ _mirageResolve(false); _mirageResolve=null; } }
+
+function iniciarEscaneoMirage(){
+  const box=document.getElementById('mirageEscanerBox');
+  const video=document.getElementById('mirageVideo');
+  box.style.display='block';
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+    .then(stream=>{ _mirageStream=stream; video.srcObject=stream; video.play(); escanearFramesMirage(video); })
+    .catch(()=>{ box.style.display='none'; showToast('No se pudo acceder a la cámara',true); });
+}
+
+function escanearFramesMirage(video){
+  if(!_mirageStream)return;
+  if('BarcodeDetector' in window){
+    const detector=new BarcodeDetector({formats:['code_128','code_39','ean_13','ean_8','qr_code','data_matrix']});
+    const scan=()=>{
+      if(!_mirageStream)return;
+      detector.detect(video).then(codes=>{
+        if(codes.length>0){ document.getElementById('mirageSerieInput').value=codes[0].rawValue; detenerEscaneoMirage(); showToast('Código detectado ✓'); }
+        else requestAnimationFrame(scan);
+      }).catch(()=>requestAnimationFrame(scan));
+    };
+    requestAnimationFrame(scan);
+  } else { showToast('Apunta al código — escríbelo si no detecta'); }
+}
+
+function detenerEscaneoMirage(){
+  if(_mirageStream){ _mirageStream.getTracks().forEach(t=>t.stop()); _mirageStream=null; }
+  const box=document.getElementById('mirageEscanerBox');
+  if(box)box.style.display='none';
+}
+
+function previsualizarFotoMirage(e){
+  const file=e.target.files[0]; if(!file)return;
+  _mirageFotoBlob=file;
+  const reader=new FileReader();
+  reader.onload=ev=>{ _mirageFotoBase64=ev.target.result; document.getElementById('mirageFotoPreview').innerHTML=`<img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`; };
+  reader.readAsDataURL(file);
+}
+
+function obtenerGPSMirage(){
+  return new Promise(resolve=>{
+    if(!navigator.geolocation){ resolve({lat:null,lng:null}); return; }
+    navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude}),()=>resolve({lat:null,lng:null}),{timeout:8000,maximumAge:0,enableHighAccuracy:true});
+  });
+}
+
+async function guardarRegistroMirage(){
+  const serie=document.getElementById('mirageSerieInput').value.trim();
+  if(!serie){ showToast('Ingresa el código de serie',true); return; }
+  if(!_mirageFotoBase64){ showToast('Toma la foto de evidencia',true); return; }
+  const btn=document.getElementById('mirageGuardarBtn');
+  btn.textContent='Guardando...'; btn.disabled=true;
+  try{
+    const {lat,lng}=await obtenerGPSMirage();
+    let foto_url=null;
+    try{
+      const nombre=`mirage_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+      const res=await fetch(`${URL_SB}/storage/v1/object/evidencias-mirage/${nombre}`,{
+        method:'POST',
+        headers:{'apikey':KEY_SB,'Authorization':'Bearer '+KEY_SB,'Content-Type':_mirageFotoBlob.type||'image/jpeg'},
+        body:_mirageFotoBlob
+      });
+      if(res.ok) foto_url=`${URL_SB}/storage/v1/object/public/evidencias-mirage/${nombre}`;
+    }catch(e){}
+    if(!foto_url) foto_url=_mirageFotoBase64;
+    const nota=document.getElementById('mirageNotaInput').value.trim();
+    const cliente=_mirageEv?.titulo||_mirageEv?.lugar||'Sin nombre';
+    await api('registros_mirage',{method:'POST',body:JSON.stringify({
+      agenda_uid:_mirageEv?.uid||null,tecnico:tecnicoActual||'',
+      cliente,codigo_serie:serie,foto_url,lat,lng,notas:nota,
+      registrado_mirage:false,fecha_instalacion:new Date().toISOString()
+    })});
+    showToast('Registro guardado ✓');
+    cerrarModalMirage();
+    if(_mirageResolve){ _mirageResolve(true); _mirageResolve=null; }
+  }catch(e){
+    showToast('Error al guardar — intenta de nuevo',true);
+    btn.textContent='✅ Guardar registro'; btn.disabled=false;
+  }
+}
+
+// ── Panel Admin — Pendientes Mirage ───────────────────────────
+async function renderPendientesMirage(contenedor){
+  contenedor.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px">Cargando...</div>';
+  try{
+    const rows=await api('registros_mirage?select=*&order=fecha_instalacion.desc');
+    if(!rows.length){ contenedor.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px">Sin registros aún.</div>'; return; }
+    const pendientes=rows.filter(r=>!r.registrado_mirage);
+    const registrados=rows.filter(r=>r.registrado_mirage);
+    let html=`<div style="margin-bottom:16px;display:flex;gap:10px;align-items:center">
+      <div style="background:#ef4444;color:#fff;border-radius:20px;padding:4px 14px;font-size:13px;font-weight:700">${pendientes.length} pendientes</div>
+      <div style="background:#22c55e;color:#fff;border-radius:20px;padding:4px 14px;font-size:13px">${registrados.length} registrados</div>
+    </div>`;
+    rows.forEach(r=>{
+      const fecha=r.fecha_instalacion?new Date(r.fecha_instalacion).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+      const mapsUrl=r.lat&&r.lng?`https://maps.google.com/?q=${r.lat},${r.lng}`:'';
+      html+=`<div style="background:var(--card);border:1.5px solid ${r.registrado_mirage?'#22c55e':'#ef4444'};border-radius:14px;padding:16px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-weight:700;font-size:15px">${r.cliente||'Sin nombre'}</div>
+            <div style="font-size:11px;color:var(--muted)">${fecha} · ${r.tecnico||''}</div>
+          </div>
+          <div style="background:${r.registrado_mirage?'#22c55e':'#ef4444'};color:#fff;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;white-space:nowrap">
+            ${r.registrado_mirage?'✓ Registrado':'⏳ Pendiente'}
+          </div>
+        </div>
+        <div style="background:var(--surface);border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:2px">CÓDIGO DE SERIE</div>
+            <div style="font-size:15px;font-weight:700;letter-spacing:.5px;font-family:monospace">${r.codigo_serie||'—'}</div>
+          </div>
+          <button onclick="copiarSerieMirage('${(r.codigo_serie||'').replace(/'/g,"\\'")}',this)"
+            style="padding:8px 14px;border-radius:8px;background:var(--accent2,#3b82f6);color:#fff;border:none;cursor:pointer;font-size:12px">Copiar</button>
+        </div>
+        ${r.foto_url?`<div style="margin-bottom:10px">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:6px">FOTO DE EVIDENCIA</div>
+          <img src="${r.foto_url}" onclick="window.open('${r.foto_url}','_blank')"
+            style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;cursor:pointer" onerror="this.style.display='none'">
+        </div>`:''}
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          ${mapsUrl?`<a href="${mapsUrl}" target="_blank" style="flex:1;padding:8px;border-radius:8px;background:var(--surface);color:var(--accent2,#3b82f6);text-align:center;font-size:12px;text-decoration:none">📍 Ver ubicación</a>`:''}
+          ${r.notas?`<div style="flex:2;padding:8px;border-radius:8px;background:var(--surface);font-size:12px;color:var(--muted)">${r.notas}</div>`:''}
+        </div>
+        ${!r.registrado_mirage?`<button onclick="marcarRegistradoMirage('${r.id}',this)" data-mirage-btn
+          style="width:100%;padding:12px;border-radius:10px;background:#22c55e;color:#fff;border:none;cursor:pointer;font-size:14px;font-weight:700">
+          ✓ Marcar como registrado en Mirage
+        </button>`:`<div style="text-align:center;font-size:12px;color:#22c55e">✓ Ya registrado en Mirage</div>`}
+      </div>`;
+    });
+    contenedor.innerHTML=html;
+  }catch(e){ contenedor.innerHTML='<div style="color:#ef4444;font-size:13px;padding:20px">Error al cargar registros.</div>'; }
+}
+
+function copiarSerieMirage(serie,btn){
+  navigator.clipboard.writeText(serie).then(()=>{ showToast('Código copiado ✓'); if(btn){const t=btn.textContent;btn.textContent='✓ Copiado';setTimeout(()=>btn.textContent=t,2000);} }).catch(()=>{
+    const el=document.createElement('textarea'); el.value=serie; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); showToast('Código copiado ✓');
+  });
+}
+
+async function marcarRegistradoMirage(id,btn){
+  btn.textContent='Guardando...'; btn.disabled=true;
+  try{
+    await api('registros_mirage?id=eq.'+id,{method:'PATCH',body:JSON.stringify({registrado_mirage:true})});
+    showToast('Marcado como registrado ✓');
+    const panel=document.querySelector('[data-mirage-panel]');
+    if(panel)renderPendientesMirage(panel);
+  }catch(e){ showToast('Error',true); btn.textContent='✓ Marcar como registrado en Mirage'; btn.disabled=false; }
+}
+
 </script>
 </body>
 </html>
+
