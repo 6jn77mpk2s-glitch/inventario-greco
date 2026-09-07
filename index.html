@@ -7189,11 +7189,19 @@ function inyectarModalMirage(){
         </div>
       </div>
       <div style="margin-bottom:16px">
-        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">Foto de evidencia *</label>
+        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">📷 Foto del condensador * <span style="font-size:10px;background:#3b82f6;color:#fff;border-radius:4px;padding:1px 6px">Mirage</span></label>
         <input id="mirageFotoInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="previsualizarFotoMirage(event)">
         <div id="mirageFotoPreview" onclick="document.getElementById('mirageFotoInput').click()"
           style="width:100%;height:130px;border-radius:10px;border:2px dashed var(--border,#444);display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--card,#2a2a3e);color:var(--muted,#aaa);font-size:13px;flex-direction:column;gap:6px;overflow:hidden">
-          <span style="font-size:28px">📷</span><span>Toca para tomar foto</span>
+          <span style="font-size:28px">📷</span><span>Foto del condensador instalado</span>
+        </div>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">📋 Foto de la nota interna * <span style="font-size:10px;background:#22c55e;color:#fff;border-radius:4px;padding:1px 6px">Interno</span></label>
+        <input id="mirageNotaFotoInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="previsualizarNotaFotoMirage(event)">
+        <div id="mirageNotaFotoPreview" onclick="document.getElementById('mirageNotaFotoInput').click()"
+          style="width:100%;height:130px;border-radius:10px;border:2px dashed var(--border,#444);display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--card,#2a2a3e);color:var(--muted,#aaa);font-size:13px;flex-direction:column;gap:6px;overflow:hidden">
+          <span style="font-size:28px">📋</span><span>Foto de la nota del trabajo</span>
         </div>
       </div>
       <div style="margin-bottom:20px">
@@ -7211,14 +7219,16 @@ function inyectarModalMirage(){
   document.body.appendChild(m);
 }
 
-let _mirageResolve=null,_mirageEv=null,_mirageStream=null,_mirageFotoBlob=null,_mirageFotoBase64=null;
+let _mirageResolve=null,_mirageEv=null,_mirageStream=null,_mirageFotoBlob=null,_mirageFotoBase64=null,_mirageNotaFotoBlob=null,_mirageNotaFotoBase64=null;
 
 function mostrarModalMirage(ev){
   inyectarModalMirage();
   _mirageEv=ev; _mirageFotoBlob=null; _mirageFotoBase64=null;
   document.getElementById('mirageSerieInput').value='';
   document.getElementById('mirageNotaInput').value='';
-  document.getElementById('mirageFotoPreview').innerHTML='<span style="font-size:28px">📷</span><span>Toca para tomar foto</span>';
+  document.getElementById('mirageFotoPreview').innerHTML='<span style="font-size:28px">📷</span><span>Foto del condensador instalado</span>';
+  document.getElementById('mirageNotaFotoPreview').innerHTML='<span style="font-size:28px">📋</span><span>Foto de la nota del trabajo</span>';
+  _mirageNotaFotoBlob=null; _mirageNotaFotoBase64=null;
   document.getElementById('mirageEscanerBox').style.display='none';
   document.getElementById('mirageGuardarBtn').textContent='✅ Guardar registro';
   document.getElementById('mirageGuardarBtn').disabled=false;
@@ -7287,6 +7297,34 @@ function previsualizarFotoMirage(e){
   reader.readAsDataURL(file);
 }
 
+function previsualizarNotaFotoMirage(e){
+  const file=e.target.files[0]; if(!file)return;
+  const prev=document.getElementById('mirageNotaFotoPreview');
+  prev.innerHTML='<span style="font-size:13px;color:var(--muted)">Comprimiendo...</span>';
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    const img=new Image();
+    img.onload=function(){
+      const MAX=1200;
+      let w=img.width,h=img.height;
+      if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      const base64=canvas.toDataURL('image/jpeg',0.75);
+      const arr=base64.split(','),mime=arr[0].match(/:(.*?);/)[1];
+      const bstr=atob(arr[1]);let n=bstr.length;
+      const u8=new Uint8Array(n);while(n--)u8[n]=bstr.charCodeAt(n);
+      _mirageNotaFotoBlob=new Blob([u8],{type:mime});
+      _mirageNotaFotoBase64=base64;
+      prev.innerHTML='<img src="'+base64+'" style="width:100%;height:100%;object-fit:cover;border-radius:8px">';
+      showToast('Nota lista (✓)');
+    };
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function obtenerGPSMirage(){
   return new Promise(resolve=>{
     if(!navigator.geolocation){ resolve({lat:null,lng:null}); return; }
@@ -7297,7 +7335,8 @@ function obtenerGPSMirage(){
 async function guardarRegistroMirage(){
   const serie=document.getElementById('mirageSerieInput').value.trim();
   if(!serie){ showToast('Ingresa el código de serie',true); return; }
-  if(!_mirageFotoBase64){ showToast('Toma la foto de evidencia',true); return; }
+  if(!_mirageFotoBase64){ showToast('Falta la foto del condensador',true); return; }
+  if(!_mirageNotaFotoBase64){ showToast('Falta la foto de la nota interna',true); return; }
   const btn=document.getElementById('mirageGuardarBtn');
   btn.textContent='Guardando...'; btn.disabled=true;
   try{
@@ -7313,6 +7352,18 @@ async function guardarRegistroMirage(){
       if(res.ok) foto_url=`${URL_SB}/storage/v1/object/public/evidencias-mirage/${nombre}`;
     }catch(e){}
     if(!foto_url) foto_url=_mirageFotoBase64;
+    // Subir foto de nota interna
+    let nota_foto_url=null;
+    try{
+      const nombre2=`mirage_nota_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+      const res2=await fetch(`${URL_SB}/storage/v1/object/evidencias-mirage/${nombre2}`,{
+        method:'POST',
+        headers:{'apikey':KEY_SB,'Authorization':'Bearer '+KEY_SB,'Content-Type':'image/jpeg'},
+        body:_mirageNotaFotoBlob
+      });
+      if(res2.ok) nota_foto_url=`${URL_SB}/storage/v1/object/public/evidencias-mirage/${nombre2}`;
+    }catch(e){}
+    if(!nota_foto_url) nota_foto_url=_mirageNotaFotoBase64;
     const nota=document.getElementById('mirageNotaInput').value.trim();
     const cliente=_mirageEv?.titulo||_mirageEv?.lugar||'Sin nombre';
     await api('registros_mirage',{method:'POST',body:JSON.stringify({
@@ -7363,8 +7414,13 @@ async function renderPendientesMirage(contenedor){
             style="padding:8px 14px;border-radius:8px;background:var(--accent2,#3b82f6);color:#fff;border:none;cursor:pointer;font-size:12px">Copiar</button>
         </div>
         ${r.foto_url?`<div style="margin-bottom:10px">
-          <div style="font-size:10px;color:var(--muted);margin-bottom:6px">FOTO DE EVIDENCIA</div>
+          <div style="font-size:10px;color:#3b82f6;margin-bottom:6px;font-weight:700">📷 CONDENSADOR (MIRAGE)</div>
           <img src="${r.foto_url}" onclick="window.open('${r.foto_url}','_blank')"
+            style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;cursor:pointer" onerror="this.style.display='none'">
+        </div>`:''}
+        ${r.nota_foto_url?`<div style="margin-bottom:10px">
+          <div style="font-size:10px;color:#22c55e;margin-bottom:6px;font-weight:700">📋 NOTA INTERNA</div>
+          <img src="${r.nota_foto_url}" onclick="window.open('${r.nota_foto_url}','_blank')"
             style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;cursor:pointer" onerror="this.style.display='none'">
         </div>`:''}
         <div style="display:flex;gap:8px;margin-bottom:12px">
