@@ -276,6 +276,7 @@ input, select, textarea { font-size: 16px !important; }
 .tabs::-webkit-scrollbar{display:none;}
 * { box-sizing: border-box; max-width: 100%; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.20.0/zxing.min.js"></script>
 </head>
 <body>
 
@@ -7248,22 +7249,40 @@ function iniciarEscaneoMirage(){
     .catch(()=>{ box.style.display='none'; showToast('No se pudo acceder a la cámara',true); });
 }
 
+let _mirageZXingReader=null;
+
 function escanearFramesMirage(video){
   if(!_mirageStream)return;
-  if('BarcodeDetector' in window){
-    const detector=new BarcodeDetector({formats:['code_128','code_39','ean_13','ean_8','qr_code','data_matrix']});
-    const scan=()=>{
-      if(!_mirageStream)return;
-      detector.detect(video).then(codes=>{
-        if(codes.length>0){ document.getElementById('mirageSerieInput').value=codes[0].rawValue; detenerEscaneoMirage(); showToast('Código detectado ✓'); }
-        else requestAnimationFrame(scan);
-      }).catch(()=>requestAnimationFrame(scan));
-    };
-    requestAnimationFrame(scan);
-  } else { showToast('Apunta al código — escríbelo si no detecta'); }
+  try{
+    // Usar ZXing — compatible con Safari/iOS
+    if(typeof ZXing !== 'undefined'){
+      _mirageZXingReader = new ZXing.BrowserMultiFormatReader();
+      _mirageZXingReader.decodeFromVideoElement(video, (result, err)=>{
+        if(result){
+          document.getElementById('mirageSerieInput').value=result.getText();
+          detenerEscaneoMirage();
+          showToast('Código detectado ✓');
+        }
+      });
+    } else if('BarcodeDetector' in window){
+      // Fallback a BarcodeDetector en Chrome/Android
+      const detector=new BarcodeDetector({formats:['code_128','code_39','ean_13','ean_8','qr_code','data_matrix']});
+      const scan=()=>{
+        if(!_mirageStream)return;
+        detector.detect(video).then(codes=>{
+          if(codes.length>0){ document.getElementById('mirageSerieInput').value=codes[0].rawValue; detenerEscaneoMirage(); showToast('Código detectado ✓'); }
+          else requestAnimationFrame(scan);
+        }).catch(()=>requestAnimationFrame(scan));
+      };
+      requestAnimationFrame(scan);
+    } else {
+      showToast('Escribe el código manualmente');
+    }
+  } catch(e){ showToast('Escribe el código manualmente'); }
 }
 
 function detenerEscaneoMirage(){
+  if(_mirageZXingReader){ try{ _mirageZXingReader.reset(); }catch(e){} _mirageZXingReader=null; }
   if(_mirageStream){ _mirageStream.getTracks().forEach(t=>t.stop()); _mirageStream=null; }
   const box=document.getElementById('mirageEscanerBox');
   if(box)box.style.display='none';
