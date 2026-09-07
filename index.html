@@ -7168,53 +7168,87 @@ function inyectarModalMirage(){
   m.id='modalMirage';
   m.style.cssText='display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);align-items:center;justify-content:center;';
   m.innerHTML=`
-    <div style="background:var(--surface,#1e1e2e);border-radius:20px;padding:24px;width:92%;max-width:420px;box-shadow:0 8px 40px rgba(0,0,0,.6);max-height:90vh;overflow-y:auto">
-      <div style="font-size:18px;font-weight:700;margin-bottom:6px;color:var(--text,#fff)">📋 Datos del equipo instalado</div>
-      <div style="font-size:12px;color:var(--muted,#aaa);margin-bottom:20px">Escanea el código de serie y toma la foto del equipo</div>
-      <div style="margin-bottom:16px">
-        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">Código de serie *</label>
-        <div style="display:flex;gap:8px">
-          <input id="mirageSerieInput" type="text" placeholder="Escanea o escribe el código"
-            style="flex:1;padding:12px;border-radius:10px;border:1.5px solid var(--border,#333);background:var(--card,#2a2a3e);color:var(--text,#fff);font-size:14px;box-sizing:border-box">
-          <button onclick="iniciarEscaneoMirage()"
-            style="padding:12px 14px;border-radius:10px;background:var(--accent2,#3b82f6);color:#fff;border:none;font-size:18px;cursor:pointer">📷</button>
-        </div>
-        <div id="mirageEscanerBox" style="display:none;margin-top:10px;position:relative">
-          <video id="mirageVideo" autoplay playsinline muted
-            style="width:100%;border-radius:10px;max-height:200px;object-fit:cover;background:#000"></video>
-          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
-            <div style="border:2px solid #3b82f6;border-radius:8px;width:70%;height:50%;opacity:.7"></div>
+    <div style="background:#0f1117;border-radius:24px;padding:0;width:94%;max-width:420px;box-shadow:0 24px 80px rgba(0,0,0,.8);max-height:93vh;overflow-y:auto;overflow-x:hidden">
+      <!-- Header -->
+      <div style="padding:20px 20px 0;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:0;padding-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:36px;height:36px;border-radius:10px;background:rgba(59,130,246,.15);display:flex;align-items:center;justify-content:center;font-size:18px">📋</div>
+          <div>
+            <div style="font-size:15px;font-weight:700;color:#fff;letter-spacing:-.2px">Registrar equipo</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.35)">Completa los datos del equipo instalado</div>
           </div>
-          <button onclick="detenerEscaneoMirage()"
-            style="margin-top:8px;width:100%;padding:10px;border-radius:10px;background:#ef4444;color:#fff;border:none;cursor:pointer;font-size:13px">✕ Cancelar escaneo</button>
         </div>
       </div>
-      <div style="margin-bottom:16px">
-        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">📷 Foto del condensador * <span style="font-size:10px;background:#3b82f6;color:#fff;border-radius:4px;padding:1px 6px">Mirage</span></label>
-        <input id="mirageFotoInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="previsualizarFotoMirage(event)">
-        <div id="mirageFotoPreview" onclick="document.getElementById('mirageFotoInput').click()"
-          style="width:100%;height:130px;border-radius:10px;border:2px dashed var(--border,#444);display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--card,#2a2a3e);color:var(--muted,#aaa);font-size:13px;flex-direction:column;gap:6px;overflow:hidden">
-          <span style="font-size:28px">📷</span><span>Foto del condensador instalado</span>
+      <!-- Body -->
+      <div style="padding:20px">
+        <!-- Código de serie -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.4);letter-spacing:.8px;margin-bottom:8px;text-transform:uppercase">Código de serie</div>
+          <div style="display:flex;gap:8px;align-items:stretch">
+            <input id="mirageSerieInput" type="text" placeholder="Escanea o escribe el código"
+              style="flex:1;padding:13px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.05);color:#fff;font-size:14px;box-sizing:border-box;font-family:monospace;letter-spacing:.5px;outline:none">
+            <button onclick="iniciarEscaneoMirage()"
+              style="width:48px;border-radius:12px;background:rgba(59,130,246,.2);color:#60a5fa;border:1px solid rgba(59,130,246,.3);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <span style="font-size:18px">&#x1f4f7;</span>
+            </button>
+          </div>
+          <div id="mirageEscanerBox" style="display:none;margin-top:10px;border-radius:14px;overflow:hidden;position:relative">
+            <video id="mirageVideo" autoplay playsinline muted
+              style="width:100%;max-height:220px;object-fit:cover;background:#000;display:block"></video>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+              <div style="border:2px solid rgba(59,130,246,.8);border-radius:10px;width:65%;height:40%;box-shadow:0 0 0 9999px rgba(0,0,0,.4)"></div>
+            </div>
+            <button onclick="detenerEscaneoMirage()"
+              style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);padding:8px 20px;border-radius:20px;background:rgba(239,68,68,.9);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:600;backdrop-filter:blur(4px)">
+              Cancelar
+            </button>
+          </div>
         </div>
-      </div>
-      <div style="margin-bottom:16px">
-        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">📋 Foto de la nota interna * <span style="font-size:10px;background:#22c55e;color:#fff;border-radius:4px;padding:1px 6px">Interno</span></label>
-        <input id="mirageNotaFotoInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="previsualizarNotaFotoMirage(event)">
-        <div id="mirageNotaFotoPreview" onclick="document.getElementById('mirageNotaFotoInput').click()"
-          style="width:100%;height:130px;border-radius:10px;border:2px dashed var(--border,#444);display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--card,#2a2a3e);color:var(--muted,#aaa);font-size:13px;flex-direction:column;gap:6px;overflow:hidden">
-          <span style="font-size:28px">📋</span><span>Foto de la nota del trabajo</span>
+        <!-- Divider -->
+        <div style="height:1px;background:rgba(255,255,255,.05);margin-bottom:18px"></div>
+        <!-- Foto condensador -->
+        <div style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase">Foto condensador</div>
+            <span style="font-size:9px;background:rgba(59,130,246,.2);color:#60a5fa;border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:2px 7px;font-weight:600">MIRAGE</span>
+          </div>
+          <input id="mirageFotoInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="previsualizarFotoMirage(event)">
+          <div id="mirageFotoPreview" onclick="document.getElementById('mirageFotoInput').click()"
+            style="width:100%;height:110px;border-radius:12px;border:1.5px dashed rgba(59,130,246,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(59,130,246,.04);color:rgba(255,255,255,.3);font-size:12px;flex-direction:column;gap:5px;overflow:hidden;transition:all .2s">
+            <div style="font-size:24px;opacity:.5">&#x1f4f7;</div>
+            <div>Toca para tomar foto</div>
+          </div>
         </div>
-      </div>
-      <div style="margin-bottom:20px">
-        <label style="font-size:12px;color:var(--muted,#aaa);display:block;margin-bottom:6px">Nota (opcional)</label>
-        <input id="mirageNotaInput" type="text" placeholder="ej. Cuarto principal, 2a planta..."
-          style="width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--border,#333);background:var(--card,#2a2a3e);color:var(--text,#fff);font-size:14px;box-sizing:border-box">
-      </div>
-      <div style="display:flex;gap:10px">
-        <button onclick="cancelarRegistroMirage()"
-          style="flex:1;padding:14px;border-radius:10px;background:var(--card,#2a2a3e);color:var(--muted,#aaa);border:1.5px solid var(--border,#333);cursor:pointer;font-size:14px">Omitir</button>
-        <button id="mirageGuardarBtn" onclick="guardarRegistroMirage()"
-          style="flex:2;padding:14px;border-radius:10px;background:#22c55e;color:#fff;border:none;cursor:pointer;font-size:14px;font-weight:700">✅ Guardar registro</button>
+        <!-- Foto nota -->
+        <div style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase">Foto nota interna</div>
+            <span style="font-size:9px;background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:4px;padding:2px 7px;font-weight:600">INTERNO</span>
+          </div>
+          <input id="mirageNotaFotoInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="previsualizarNotaFotoMirage(event)">
+          <div id="mirageNotaFotoPreview" onclick="document.getElementById('mirageNotaFotoInput').click()"
+            style="width:100%;height:110px;border-radius:12px;border:1.5px dashed rgba(34,197,94,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(34,197,94,.04);color:rgba(255,255,255,.3);font-size:12px;flex-direction:column;gap:5px;overflow:hidden;transition:all .2s">
+            <div style="font-size:24px;opacity:.5">&#x1f4cb;</div>
+            <div>Toca para tomar foto</div>
+          </div>
+        </div>
+        <!-- Nota opcional -->
+        <div style="margin-bottom:20px">
+          <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,.4);letter-spacing:.8px;margin-bottom:8px;text-transform:uppercase">Nota (opcional)</div>
+          <input id="mirageNotaInput" type="text" placeholder="ej. Cuarto principal, 2a planta..."
+            style="width:100%;padding:13px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.05);color:#fff;font-size:13px;box-sizing:border-box;outline:none">
+        </div>
+        <!-- Botones -->
+        <div style="display:flex;gap:10px">
+          <button onclick="cancelarRegistroMirage()"
+            style="flex:1;padding:14px;border-radius:12px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.08);cursor:pointer;font-size:13px;font-weight:500">
+            Omitir
+          </button>
+          <button id="mirageGuardarBtn" onclick="guardarRegistroMirage()"
+            style="flex:2;padding:14px;border-radius:12px;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border:none;cursor:pointer;font-size:14px;font-weight:700;letter-spacing:-.1px;box-shadow:0 4px 20px rgba(34,197,94,.3)">
+            Guardar registro
+          </button>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(m);
@@ -7421,50 +7455,55 @@ async function renderPendientesMirage(contenedor){
     if(!rows.length){ contenedor.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px">Sin registros aún.</div>'; return; }
     const pendientes=rows.filter(r=>!r.registrado_mirage);
     const registrados=rows.filter(r=>r.registrado_mirage);
-    let html=`<div style="margin-bottom:16px;display:flex;gap:10px;align-items:center">
-      <div style="background:#ef4444;color:#fff;border-radius:20px;padding:4px 14px;font-size:13px;font-weight:700">${pendientes.length} pendientes</div>
-      <div style="background:#22c55e;color:#fff;border-radius:20px;padding:4px 14px;font-size:13px">${registrados.length} registrados</div>
-    </div>`;
+    let html=`
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <div style="flex:1;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:10px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#f87171">${pendientes.length}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.6px;margin-top:2px">Pendientes</div>
+        </div>
+        <div style="flex:1;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:10px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#4ade80">${registrados.length}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.6px;margin-top:2px">Registrados</div>
+        </div>
+      </div>
+    `;
     rows.forEach(r=>{
       const fecha=r.fecha_instalacion?new Date(r.fecha_instalacion).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
       const mapsUrl=r.lat&&r.lng?`https://maps.google.com/?q=${r.lat},${r.lng}`:'';
-      html+=`<div style="background:var(--card);border:1.5px solid ${r.registrado_mirage?'#22c55e':'#ef4444'};border-radius:14px;padding:16px;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div>
-            <div style="font-weight:700;font-size:15px">${r.cliente||'Sin nombre'}</div>
-            <div style="font-size:11px;color:var(--muted)">${fecha} · ${r.tecnico||''}</div>
+      const esPendiente=!r.registrado_mirage;
+      html+=`
+        <div style="background:#0f1117;border:1px solid ${esPendiente?'rgba(239,68,68,.2)':'rgba(34,197,94,.15)'};border-radius:14px;margin-bottom:8px;overflow:hidden">
+          <div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05)">
+            <div style="min-width:0;flex:1">
+              <div style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.cliente||'Sin nombre'}</div>
+              <div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:1px">${fecha} · ${r.tecnico||''}</div>
+            </div>
+            <div style="margin-left:8px;flex-shrink:0;font-size:9px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.4px;${esPendiente?'background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.25)':'background:rgba(34,197,94,.12);color:#4ade80;border:1px solid rgba(34,197,94,.25)'}">
+              ${esPendiente?'PENDIENTE':'LISTO'}
+            </div>
           </div>
-          <div style="background:${r.registrado_mirage?'#22c55e':'#ef4444'};color:#fff;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;white-space:nowrap">
-            ${r.registrado_mirage?'✓ Registrado':'⏳ Pendiente'}
+          <div style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.04)">
+            <div>
+              <div style="font-size:9px;color:rgba(255,255,255,.3);letter-spacing:.6px;text-transform:uppercase;margin-bottom:2px">Serie</div>
+              <div style="font-size:13px;font-weight:700;color:#60a5fa;font-family:monospace">${r.codigo_serie||'—'}</div>
+            </div>
+            <button onclick="copiarSerieMirage('${(r.codigo_serie||'').replace(/'/g,"\'")}',this)"
+              style="padding:6px 12px;border-radius:8px;background:rgba(59,130,246,.12);color:#60a5fa;border:1px solid rgba(59,130,246,.2);cursor:pointer;font-size:11px;font-weight:600">
+              Copiar
+            </button>
+          </div>
+          ${(r.foto_url||r.nota_foto_url)?`
+          <div style="padding:10px 14px;display:flex;gap:8px;border-bottom:1px solid rgba(255,255,255,.04)">
+            ${r.foto_url?`<div style="flex:1;min-width:0"><div style="font-size:9px;color:#60a5fa;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px">Condensador</div><img src="${r.foto_url}" onclick="abrirFotoMirage('${r.foto_url}')" style="width:100%;height:72px;object-fit:cover;border-radius:8px;cursor:pointer" onerror="this.style.display='none'"></div>`:''}
+            ${r.nota_foto_url?`<div style="flex:1;min-width:0"><div style="font-size:9px;color:#4ade80;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px">Nota interna</div><img src="${r.nota_foto_url}" onclick="abrirFotoMirage('${r.nota_foto_url}')" style="width:100%;height:72px;object-fit:cover;border-radius:8px;cursor:pointer" onerror="this.style.display='none'"></div>`:''}
+          </div>`:''}
+          <div style="padding:10px 14px;display:flex;gap:8px;align-items:center">
+            ${mapsUrl?`<button onclick="abrirFotoMirage('${mapsUrl}')" style="padding:6px 10px;border-radius:7px;background:rgba(255,255,255,.05);color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.08);cursor:pointer;font-size:11px">📍 GPS</button>`:''}
+            ${r.notas?`<div style="flex:1;font-size:11px;color:rgba(255,255,255,.3);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.notas}</div>`:'<div style="flex:1"></div>'}
+            ${esPendiente?`<button onclick="marcarRegistradoMirage('${r.id}',this)" style="padding:6px 12px;border-radius:8px;background:rgba(34,197,94,.12);color:#4ade80;border:1px solid rgba(34,197,94,.25);cursor:pointer;font-size:11px;font-weight:700">✓ Registrado</button>`:`<div style="font-size:10px;color:rgba(34,197,94,.4)">✓ Hecho</div>`}
           </div>
         </div>
-        <div style="background:var(--surface);border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-size:10px;color:var(--muted);margin-bottom:2px">CÓDIGO DE SERIE</div>
-            <div style="font-size:15px;font-weight:700;letter-spacing:.5px;font-family:monospace">${r.codigo_serie||'—'}</div>
-          </div>
-          <button onclick="copiarSerieMirage('${(r.codigo_serie||'').replace(/'/g,"\\'")}',this)"
-            style="padding:8px 14px;border-radius:8px;background:var(--accent2,#3b82f6);color:#fff;border:none;cursor:pointer;font-size:12px">Copiar</button>
-        </div>
-        ${r.foto_url?`<div style="margin-bottom:10px">
-          <div style="font-size:10px;color:#3b82f6;margin-bottom:6px;font-weight:700">📷 CONDENSADOR (MIRAGE)</div>
-          <img src="${r.foto_url}" onclick="abrirFotoMirage('${r.foto_url}')"
-            style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent" onerror="this.style.display='none'">
-        </div>`:''}
-        ${r.nota_foto_url?`<div style="margin-bottom:10px">
-          <div style="font-size:10px;color:#22c55e;margin-bottom:6px;font-weight:700">📋 NOTA INTERNA</div>
-          <img src="${r.nota_foto_url}" onclick="abrirFotoMirage('${r.nota_foto_url}')"
-            style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent" onerror="this.style.display='none'">
-        </div>`:''}
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          ${mapsUrl?`<a href="${mapsUrl}" target="_blank" style="flex:1;padding:8px;border-radius:8px;background:var(--surface);color:var(--accent2,#3b82f6);text-align:center;font-size:12px;text-decoration:none">📍 Ver ubicación</a>`:''}
-          ${r.notas?`<div style="flex:2;padding:8px;border-radius:8px;background:var(--surface);font-size:12px;color:var(--muted)">${r.notas}</div>`:''}
-        </div>
-        ${!r.registrado_mirage?`<button onclick="marcarRegistradoMirage('${r.id}',this)" data-mirage-btn
-          style="width:100%;padding:12px;border-radius:10px;background:#22c55e;color:#fff;border:none;cursor:pointer;font-size:14px;font-weight:700">
-          ✓ Marcar como registrado en Mirage
-        </button>`:`<div style="text-align:center;font-size:12px;color:#22c55e">✓ Ya registrado en Mirage</div>`}
-      </div>`;
+      `;
     });
     contenedor.innerHTML=html;
   }catch(e){ contenedor.innerHTML='<div style="color:#ef4444;font-size:13px;padding:20px">Error al cargar registros.</div>'; }
